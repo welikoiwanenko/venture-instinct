@@ -7,7 +7,7 @@ import {
   type CampaignConfig,
 } from "../config/campaign-config.ts";
 import { createInitialCampaignState, type CampaignState } from "../campaign/initial-state.ts";
-import { isPlainRecord, snapshotPlainData } from "../data/plain-data.ts";
+import { isPlainRecord, snapshotPlainData, withSnapshotIssues } from "../data/plain-data.ts";
 import { canonicalHash, canonicalJson } from "./canonical-json.ts";
 
 /** Versions owned by the engine code. Bump one whenever its behaviour changes. */
@@ -152,16 +152,22 @@ function readScenario(
     return undefined;
   }
   const snapshot = snapshotPlainData(untrusted, "scenario");
-  if (!snapshot.ok) {
-    issues.push(...snapshot.issues);
-    return undefined;
-  }
-  const value = snapshot.value;
+  const local: ManifestIssue[] = [];
+  const scenario = checkScenario(snapshot.value, snapshot.issues.length === 0, local);
+  issues.push(...withSnapshotIssues(snapshot.issues, local));
+  return snapshot.issues.length === 0 ? scenario : undefined;
+}
+
+/** Hashes `value` only when `hashable` (a complete snapshot); a partial one is only checked. */
+function checkScenario(
+  value: unknown,
+  hashable: boolean,
+  issues: ManifestIssue[],
+): { id: string; contentVersion: number; contentHash: string } | undefined {
   if (!isPlainRecord(value)) {
     issues.push({ path: "scenario", message: `must be an object, got ${describe(value)}` });
     return undefined;
   }
-  const before = issues.length;
   rejectUnknownKeys(value, SCENARIO_KEYS, "scenario", issues);
 
   const id = value["id"];
@@ -179,13 +185,15 @@ function readScenario(
   }
 
   let contentHash: string | undefined;
-  try {
-    contentHash = canonicalHash(value);
-  } catch (error) {
-    issues.push({ path: "scenario", message: `must be plain JSON data: ${(error as Error).message}` });
+  if (hashable) {
+    try {
+      contentHash = canonicalHash(value);
+    } catch (error) {
+      issues.push({ path: "scenario", message: `must be plain JSON data: ${(error as Error).message}` });
+    }
   }
 
-  if (issues.length > before || typeof id !== "string" || contentVersion === undefined || contentHash === undefined) {
+  if (issues.length > 0 || typeof id !== "string" || contentVersion === undefined || contentHash === undefined) {
     return undefined;
   }
   return { id, contentVersion, contentHash };
@@ -193,11 +201,13 @@ function readScenario(
 
 function readEngine(untrusted: unknown, issues: ManifestIssue[]): EngineVersions | undefined {
   const snapshot = snapshotPlainData(untrusted, "engine");
-  if (!snapshot.ok) {
-    issues.push(...snapshot.issues);
-    return undefined;
-  }
-  const value = snapshot.value;
+  const local: ManifestIssue[] = [];
+  const engine = checkEngine(snapshot.value, local);
+  issues.push(...withSnapshotIssues(snapshot.issues, local));
+  return snapshot.issues.length === 0 ? engine : undefined;
+}
+
+function checkEngine(value: unknown, issues: ManifestIssue[]): EngineVersions | undefined {
   if (!isPlainRecord(value)) {
     issues.push({ path: "engine", message: `must be an object, got ${describe(value)}` });
     return undefined;

@@ -2,7 +2,7 @@
 // (docs/design-doc.md §1, §5). A campaign captures one frozen copy at
 // initialization and keeps it for the whole run (§18 manifest).
 
-import { isPlainRecord, snapshotPlainData } from "../data/plain-data.ts";
+import { isPlainRecord, snapshotPlainData, withSnapshotIssues } from "../data/plain-data.ts";
 
 export interface InvestmentWindow {
   /** First week (1-based, inclusive) in which initial investments are allowed. */
@@ -64,18 +64,24 @@ const WINDOW_KEYS = ["firstWeek", "lastWeek"] as const;
 /**
  * Checks untrusted input and returns a fresh config that shares nothing with it.
  * All issues are reported at once, each tied to the field that caused it. The
- * input is read once; getters are reported as issues and never called.
+ * input is read once; getters are reported as issues and never called, and the
+ * other fields are still validated.
  */
 export function validateCampaignConfig(untrusted: unknown): ConfigValidationResult {
-  const issues: ConfigIssue[] = [];
   // Every check below reads this one snapshot, never `untrusted` again.
   const snapshot = snapshotPlainData(untrusted);
-  if (!snapshot.ok) {
-    return { ok: false, issues: snapshot.issues };
+  const checked = checkConfig(snapshot.value);
+  if (snapshot.issues.length > 0) {
+    return { ok: false, issues: withSnapshotIssues(snapshot.issues, checked.issues) };
   }
-  const input = snapshot.value;
+  return checked.config === undefined ? { ok: false, issues: checked.issues } : { ok: true, config: checked.config };
+}
+
+/** `config` is set only when there are no issues. */
+function checkConfig(input: unknown): { issues: ConfigIssue[]; config: CampaignConfig | undefined } {
+  const issues: ConfigIssue[] = [];
   if (!isPlainRecord(input)) {
-    return { ok: false, issues: [{ path: "", message: `must be an object, got ${describe(input)}` }] };
+    return { issues: [{ path: "", message: `must be an object, got ${describe(input)}` }], config: undefined };
   }
   rejectUnknownKeys(input, CONFIG_KEYS, "", issues);
 
@@ -127,10 +133,10 @@ export function validateCampaignConfig(untrusted: unknown): ConfigValidationResu
     checkSizeCents === undefined ||
     maxInitialInvestments === undefined
   ) {
-    return { ok: false, issues };
+    return { issues, config: undefined };
   }
   return {
-    ok: true,
+    issues,
     config: {
       id,
       version,

@@ -10,30 +10,66 @@ export interface SnapshotIssue {
   readonly message: string;
 }
 
-export type SnapshotResult =
-  | { readonly ok: true; readonly value: unknown }
-  | { readonly ok: false; readonly issues: readonly SnapshotIssue[] };
+export interface Snapshot {
+  /**
+   * The copy. When there are issues it is partial: a rejected accessor is left
+   * out, so the remaining fields can still be validated. Hash it only when
+   * `issues` is empty.
+   */
+  readonly value: unknown;
+  readonly issues: readonly SnapshotIssue[];
+}
 
 /**
  * Copies arrays and plain objects (own enumerable string keys only), keeping every
  * other value as is, so later checks still see and reject values such as NaN,
  * undefined or a Date. Copied objects have a null prototype, so an absent key can
  * never be answered by Object.prototype. Every accessor is reported, not just the
- * first. `path` names the root in issue paths.
+ * first. `path` names the root in issue paths. Never throws.
  */
-export function snapshotPlainData(value: unknown, path = ""): SnapshotResult {
+export function snapshotPlainData(value: unknown, path = ""): Snapshot {
   const issues: SnapshotIssue[] = [];
-  let copied: unknown;
   try {
-    copied = copy(value, path, new Set(), issues);
+    return { value: copy(value, path, new Set(), issues), issues };
   } catch (error) {
-    // A Proxy trap may throw anything; report it instead of propagating.
-    return {
-      ok: false,
-      issues: [{ path, message: `cannot be read: ${error instanceof Error ? error.message : String(error)}` }],
-    };
+    // A Proxy trap may throw anything, including a value whose message or
+    // toString throws in turn; report it instead of propagating.
+    return { value: undefined, issues: [{ path, message: `cannot be read: ${describeThrown(error)}` }] };
   }
-  return issues.length > 0 ? { ok: false, issues } : { ok: true, value: copied };
+}
+
+/**
+ * Snapshot issues first, then the later validation issues that a snapshot issue
+ * does not already explain (e.g. "is required" for a rejected getter).
+ */
+export function withSnapshotIssues<T extends SnapshotIssue>(
+  snapshotIssues: readonly SnapshotIssue[],
+  later: readonly T[],
+): Array<SnapshotIssue | T> {
+  const covered = (path: string): boolean =>
+    snapshotIssues.some(
+      (issue) =>
+        issue.path === "" ||
+        path === issue.path ||
+        path.startsWith(`${issue.path}.`) ||
+        path.startsWith(`${issue.path}[`),
+    );
+  return [...snapshotIssues, ...later.filter((issue) => !covered(issue.path))];
+}
+
+/** A description of any thrown value; never throws itself. */
+function describeThrown(error: unknown): string {
+  try {
+    if (error instanceof Error && typeof error.message === "string") {
+      return error.message;
+    }
+    if (typeof error === "string") {
+      return error;
+    }
+  } catch {
+    // Fall through to the constant below.
+  }
+  return "an unreadable value was thrown";
 }
 
 export function isPlainRecord(value: unknown): value is Record<string, unknown> {

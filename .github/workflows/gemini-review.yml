@@ -34,7 +34,9 @@ jobs:
        startsWith(github.event.comment.body, '/gemini-cli review') &&
        github.event.comment.author_association == 'OWNER')
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # Step budgets: pending 2 + Gemini 8 + report 2 = 12 < 15, so a timed-out step is
+    # always reported before the job deadline cancels the job.
+    timeout-minutes: 15
     permissions:
       contents: read
       pull-requests: write
@@ -46,6 +48,7 @@ jobs:
     steps:
       - name: Mark review pending
         id: pr
+        timeout-minutes: 2
         run: |
           sha=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" -q .head.sha)
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
@@ -57,7 +60,7 @@ jobs:
 
       - name: Run Gemini pull request review
         id: gemini
-        # Below the job timeout, so a hung review fails this step and is still reported.
+        # A hung review fails this step instead of the job, so it is still reported.
         timeout-minutes: 8
         uses: google-github-actions/run-gemini-cli@f77273f4c914e4bf38440cf36a0369cb64a37489 # v0.1.22
         env:
@@ -109,11 +112,12 @@ jobs:
       #   not a finding about the PR, so it does not block the merge;
       # - failure: Gemini failed, hit the 8-minute step timeout, or exited 0 without
       #   posting (e.g. turn limit hit);
-      # - error: the run was cancelled (manually, by a newer review request, or by the
-      #   job timeout). It is only written while the status still points at this run,
+      # - error: the run was cancelled (manually or by a newer review request). It is
+      #   only written while the status still points at this run,
       #   so a newer request that already marked the commit pending is not overwritten.
       - name: Report result
         if: ${{ always() && steps.pr.outputs.sha }}
+        timeout-minutes: 2
         run: |
           if [ "$JOB_STATUS" = cancelled ]; then
             current=$(gh api "repos/$GITHUB_REPOSITORY/commits/$SHA/status" \

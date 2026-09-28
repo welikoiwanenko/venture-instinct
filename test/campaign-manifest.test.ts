@@ -296,3 +296,12 @@ test("a scenario hash equals the hash of the same data without getters or protot
   const nullProto = Object.assign(Object.create(null) as Record<string, unknown>, plain);
   assert.equal(build({ scenario: nullProto }).scenario.contentHash, build().scenario.contentHash);
 });
+
+test("a scenario getter does not hide other scenario issues or produce a hash", () => {
+  const scenario = { ...fixtureScenario(), contentVersion: 0 };
+  Object.defineProperty(scenario, "id", { enumerable: true, get: () => "technical-fixture-empty" });
+  assert.deepEqual(issuesFor({ scenario }), [
+    { path: "scenario.id", message: "must be a data property, not a getter or setter" },
+    { path: "scenario.contentVersion", message: "must be a positive integer, got 0" },
+  ]);
+});

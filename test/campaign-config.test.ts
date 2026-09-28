@@ -176,13 +176,55 @@ test("getters are reported as issues and never called", () => {
   assert.equal(calls, 0);
 });
 
-test("a throwing proxy is reported as an issue, not an exception", () => {
-  const input = new Proxy(baselineInput(), {
-    ownKeys() {
-      throw new Error("trap");
+test("a getter does not hide independent issues in other fields", () => {
+  const input = { ...baselineInput(), slotsPerWeek: 0, maxInitialInvestments: 6 };
+  Object.defineProperty(input, "id", { enumerable: true, get: () => "poc-0.1-baseline" });
+  assert.deepEqual(issuesFor(input), [
+    { path: "id", message: "must be a data property, not a getter or setter" },
+    { path: "slotsPerWeek", message: "must be at least 1, got 0" },
+    {
+      path: "maxInitialInvestments",
+      message: "6 checks of 20000000 need 120000000, more than initialCapitalCents (100000000)",
     },
-  });
-  assert.deepEqual(issuesFor(input), [{ path: "", message: "cannot be read: trap" }]);
+  ]);
+});
+
+test("a throwing proxy is reported as an issue, not an exception, whatever it throws", () => {
+  const throwing = (thrown: () => unknown) =>
+    new Proxy(baselineInput(), {
+      ownKeys() {
+        throw thrown();
+      },
+    });
+  const unreadable = "cannot be read: an unreadable value was thrown";
+  const table: Array<[() => unknown, string]> = [
+    [() => new Error("trap"), "cannot be read: trap"],
+    [() => "plain string", "cannot be read: plain string"],
+    [() => Object.create(null), unreadable],
+    [
+      () => ({
+        toString() {
+          throw new Error("nested");
+        },
+      }),
+      unreadable,
+    ],
+    [
+      () => {
+        const error = new Error("hidden");
+        Object.defineProperty(error, "message", {
+          get() {
+            throw new Error("nested");
+          },
+        });
+        return error;
+      },
+      unreadable,
+    ],
+  ];
+  for (const [thrown, message] of table) {
+    assert.deepEqual(issuesFor(throwing(thrown)), [{ path: "", message }]);
+  }
 });
 
 test("values inherited from Object.prototype are not read as settings", () => {
