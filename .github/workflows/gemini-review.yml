@@ -88,16 +88,22 @@ jobs:
 
       # The action can exit 0 without posting (e.g. turn limit hit), so require a review
       # submitted by this run. Cancelled runs (superseded by a newer one) report nothing.
+      # An exhausted Gemini API quota (HTTP 429) is not a finding about the PR, so it
+      # reports success ("skipped") instead of blocking the merge.
       - name: Report result
         if: ${{ !cancelled() && steps.pr.outputs.sha }}
         run: |
           posted=$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/reviews" \
             -q ".[] | select(.user.login == \"github-actions[bot]\" and .submitted_at != null and .commit_id == \"$SHA\" and .id > $LAST_REVIEW) | .id" | wc -l)
           if [ "$OUTCOME" = success ] && [ "$posted" -gt 0 ]; then state=success; desc="Gemini review posted"
+          elif printf '%s' "$GEMINI_ERROR" | grep -qiE '"code": ?429|RESOURCE_EXHAUSTED|exhausted your .*quota'; then
+            state=success; desc="Skipped: Gemini API quota exhausted, retry later"
+            echo "::warning title=Gemini review skipped::Gemini API quota exhausted; comment /gemini-cli review again after it resets."
           else state=failure; desc="Gemini review failed or posted nothing"; fi
           gh api "repos/$GITHUB_REPOSITORY/statuses/${{ steps.pr.outputs.sha }}" -f state=$state \
             -f context=gemini-review -f description="$desc" -f target_url="$STATUS_URL"
         env:
           OUTCOME: ${{ steps.gemini.outcome }}
+          GEMINI_ERROR: ${{ steps.gemini.outputs.error }}
           SHA: ${{ steps.pr.outputs.sha }}
           LAST_REVIEW: ${{ steps.pr.outputs.last_review }}
