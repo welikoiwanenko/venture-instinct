@@ -7,9 +7,13 @@
 import { readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 
-import { initializeCampaign, inspectCampaign, type CampaignSummary } from "../app/campaign-app.ts";
-import { formatManifestIssue } from "../manifest/campaign-manifest.ts";
-import { canonicalJson } from "../manifest/canonical-json.ts";
+import {
+  canonicalJson,
+  formatManifestIssue,
+  initializeCampaign,
+  inspectCampaign,
+  type CampaignSummary,
+} from "../app/campaign-app.ts";
 
 export const USAGE = "usage: campaign-init --seed <seed> --scenario <file.json> [--config <file.json>] [--json]";
 
@@ -74,18 +78,25 @@ export function formatSummary(s: CampaignSummary): string {
     ["Week", `planning week ${s.planningWeek}; ${s.completedWeeks} of ${s.horizonWeeks} completed`],
     ["Window", s.investmentWindowOpen ? "initial investments open" : "initial investments closed"],
     ["Slots", `${s.slotsAvailable} available`],
-    ["Capital", `${formatUsd(s.capitalAvailableUsd)} available`],
-    ["Invested", `${s.initialInvestmentsMade} of ${s.maxInitialInvestments} initial checks`],
+    ["Capital", `${formatCentsAsUsd(s.capitalAvailableCents)} available`],
+    ["Invested", `${s.initialInvestmentsMade} of ${s.maxInitialInvestments} initial checks of ${formatCentsAsUsd(s.checkSizeCents)}`],
     ["Portfolio", s.portfolioSize === 0 ? "empty" : `${s.portfolioSize} companies`],
     ["State", s.stateHash],
   ];
   return rows.map(([label, value]) => `${label.padEnd(10)} ${value}`).join("\n");
 }
 
-/** Fixed `$1,000,000` style, independent of the host locale. */
-export function formatUsd(amount: number): string {
-  const digits = String(Math.abs(amount)).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-  return `${amount < 0 ? "-" : ""}$${digits}`;
+/**
+ * Fixed `$1,000,000` / `$12.50` style, independent of the host locale. Cents are
+ * shown only when the amount is not a whole number of dollars.
+ */
+export function formatCentsAsUsd(cents: number): string {
+  const absolute = Math.abs(cents);
+  const remainder = absolute % 100;
+  // Subtract first so the division is exact even near Number.MAX_SAFE_INTEGER.
+  const dollars = String((absolute - remainder) / 100).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  const fraction = remainder === 0 ? "" : `.${String(remainder).padStart(2, "0")}`;
+  return `${cents < 0 ? "-" : ""}$${dollars}${fraction}`;
 }
 
 function readJson(path: string, label: string, io: CliIo, problems: string[]): unknown {

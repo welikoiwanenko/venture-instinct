@@ -24,6 +24,10 @@ export function openWeekSlots(week: Week, config: CampaignConfig): SlotBalance {
  * success returns a new balance. Malformed balances and costs throw.
  */
 export function spendSlots(balance: SlotBalance, cost: number): SpendSlotsResult {
+  // No config here, so only the shape of the week is checked, not the horizon.
+  if (!Number.isSafeInteger(balance.week) || balance.week < 1) {
+    throw new RangeError(`slot balance week must be a positive integer, got ${String(balance.week)}`);
+  }
   if (!Number.isSafeInteger(balance.remaining) || balance.remaining < 0) {
     throw new RangeError(`remaining slots must be a non-negative integer, got ${String(balance.remaining)}`);
   }

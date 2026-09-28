@@ -3,10 +3,10 @@
 // maxInitialInvestments checks may be paid from it.
 
 import type { CampaignConfig } from "../config/campaign-config.ts";
-import { assertNonNegativeUsd, subtractUsd, type Usd } from "./money.ts";
+import { assertNonNegativeCents, subtractCents, type Cents } from "./money.ts";
 
 export interface InvestmentBudget {
-  readonly availableUsd: Usd;
+  readonly availableCents: Cents;
   readonly checksPaid: number;
 }
 
@@ -15,23 +15,23 @@ export type PayCheckResult =
   | { readonly ok: false; readonly reason: string };
 
 export function openingInvestmentBudget(config: CampaignConfig): InvestmentBudget {
-  return Object.freeze({ availableUsd: config.initialCapitalUsd, checksPaid: 0 });
+  return Object.freeze({ availableCents: config.initialCapitalCents, checksPaid: 0 });
 }
 
 /**
- * Pays one standard check (config.checkSizeUsd). Rejection returns a reason and
+ * Pays one standard check (config.checkSizeCents). Rejection returns a reason and
  * leaves `budget` untouched; success returns a new budget. The investment window
  * is checked separately with isInvestmentWeek.
  */
 export function payInitialCheck(budget: InvestmentBudget, config: CampaignConfig): PayCheckResult {
-  assertNonNegativeUsd(budget.availableUsd, "availableUsd");
+  assertNonNegativeCents(budget.availableCents, "availableCents");
   if (!Number.isSafeInteger(budget.checksPaid) || budget.checksPaid < 0) {
     throw new RangeError(`checksPaid must be a non-negative integer, got ${String(budget.checksPaid)}`);
   }
-  if (budget.availableUsd < config.checkSizeUsd) {
+  if (budget.availableCents < config.checkSizeCents) {
     return {
       ok: false,
-      reason: `check of ${config.checkSizeUsd} exceeds the available ${budget.availableUsd}`,
+      reason: `check of ${config.checkSizeCents} exceeds the available ${budget.availableCents}`,
     };
   }
   if (budget.checksPaid >= config.maxInitialInvestments) {
@@ -40,7 +40,7 @@ export function payInitialCheck(budget: InvestmentBudget, config: CampaignConfig
   return {
     ok: true,
     budget: Object.freeze({
-      availableUsd: subtractUsd(budget.availableUsd, config.checkSizeUsd),
+      availableCents: subtractCents(budget.availableCents, config.checkSizeCents),
       checksPaid: budget.checksPaid + 1,
     }),
   };

@@ -13,6 +13,10 @@ import {
 } from "../manifest/campaign-manifest.ts";
 import { canonicalHash } from "../manifest/canonical-json.ts";
 
+// Adapters import only from src/app/, so the helpers they need are re-exported here.
+export { formatManifestIssue, type ManifestIssue } from "../manifest/campaign-manifest.ts";
+export { canonicalJson } from "../manifest/canonical-json.ts";
+
 export interface Campaign {
   readonly id: string;
   /** The frozen configuration snapshot captured at initialization. */
@@ -45,9 +49,12 @@ export interface CampaignSummary {
   readonly horizonWeeks: number;
   readonly investmentWindowOpen: boolean;
   readonly slotsAvailable: number;
-  readonly capitalAvailableUsd: number;
+  /** Whole US cents. */
+  readonly capitalAvailableCents: number;
   readonly initialInvestmentsMade: number;
   readonly maxInitialInvestments: number;
+  /** Whole US cents paid for each initial investment. */
+  readonly checkSizeCents: number;
   readonly portfolioSize: number;
   /** Hash of the current domain state; equals manifest.initialStateHash before any command. */
   readonly stateHash: string;
@@ -92,9 +99,10 @@ export function inspectCampaign(campaign: Campaign): CampaignSummary {
     horizonWeeks: config.horizonWeeks,
     investmentWindowOpen: isInvestmentWeek(state.planningWeek, config),
     slotsAvailable: state.slots.remaining,
-    capitalAvailableUsd: state.budget.availableUsd,
+    capitalAvailableCents: state.budget.availableCents,
     initialInvestmentsMade: state.budget.checksPaid,
     maxInitialInvestments: config.maxInitialInvestments,
+    checkSizeCents: config.checkSizeCents,
     portfolioSize: state.portfolio.length,
     stateHash: canonicalHash(state),
   });

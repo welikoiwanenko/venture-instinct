@@ -22,12 +22,12 @@ function issuesFor(input: unknown): readonly ConfigIssue[] {
 test("baseline matches the PoC 0.1 starting configuration (design §5)", () => {
   assert.deepEqual(POC_BASELINE_CONFIG, {
     id: "poc-0.1-baseline",
-    version: 1,
+    version: 2,
     investmentWindow: { firstWeek: 1, lastWeek: 8 },
     horizonWeeks: 156,
     slotsPerWeek: 5,
-    initialCapitalUsd: 1_000_000,
-    checkSizeUsd: 200_000,
+    initialCapitalCents: 100_000_000,
+    checkSizeCents: 20_000_000,
     maxInitialInvestments: 5,
   });
   assert.equal(validateCampaignConfig(baselineInput()).ok, true);
@@ -55,15 +55,15 @@ const invalidFixtures: ReadonlyArray<{ name: string; input: unknown; issues: Con
       id: " ",
       version: "1",
       horizonWeeks: 156.5,
-      checkSizeUsd: -200_000,
-      initialCapitalUsd: Number.NaN,
+      checkSizeCents: -20_000_000,
+      initialCapitalCents: Number.NaN,
     },
     issues: [
       { path: "id", message: 'must be a non-empty string without surrounding spaces, got " "' },
       { path: "version", message: 'must be an integer, got "1"' },
       { path: "horizonWeeks", message: "must be an integer, got 156.5" },
-      { path: "initialCapitalUsd", message: "must be an integer, got NaN" },
-      { path: "checkSizeUsd", message: "must be at least 1, got -200000" },
+      { path: "initialCapitalCents", message: "must be an integer, got NaN" },
+      { path: "checkSizeCents", message: "must be at least 1, got -20000000" },
     ],
   },
   {
@@ -98,7 +98,17 @@ const invalidFixtures: ReadonlyArray<{ name: string; input: unknown; issues: Con
     issues: [
       {
         path: "maxInitialInvestments",
-        message: "6 checks of 200000 need 1200000, more than initialCapitalUsd (1000000)",
+        message: "6 checks of 20000000 need 120000000, more than initialCapitalCents (100000000)",
+      },
+    ],
+  },
+  {
+    name: "full deployment overflows the safe-integer range",
+    input: { ...baselineInput(), checkSizeCents: Number.MAX_SAFE_INTEGER, maxInitialInvestments: 2 },
+    issues: [
+      {
+        path: "maxInitialInvestments",
+        message: `2 checks of ${Number.MAX_SAFE_INTEGER} need ${Number.MAX_SAFE_INTEGER * 2}, more than initialCapitalCents (100000000)`,
       },
     ],
   },
@@ -124,8 +134,8 @@ test("captured config stays unchanged when defaults change afterwards", () => {
   const defaults = baselineInput();
   const captured = captureCampaignConfig(defaults);
 
-  defaults["checkSizeUsd"] = 100_000;
-  defaults["version"] = 2;
+  defaults["checkSizeCents"] = 10_000_000;
+  defaults["version"] = 3;
   (defaults["investmentWindow"] as { lastWeek: number }).lastWeek = 12;
 
   assert.deepEqual(captured, POC_BASELINE_CONFIG);
@@ -136,7 +146,94 @@ test("captured config stays unchanged when defaults change afterwards", () => {
   }, TypeError);
 
   const rebalanced = captureCampaignConfig(defaults);
-  assert.equal(rebalanced.version, 2);
-  assert.equal(rebalanced.checkSizeUsd, 100_000);
-  assert.equal(captured.checkSizeUsd, 200_000);
+  assert.equal(rebalanced.version, 3);
+  assert.equal(rebalanced.checkSizeCents, 10_000_000);
+  assert.equal(captured.checkSizeCents, 20_000_000);
+});
+
+test("getters are reported as issues and never called", () => {
+  let calls = 0;
+  const input = baselineInput();
+  Object.defineProperty(input, "slotsPerWeek", {
+    enumerable: true,
+    get() {
+      calls += 1;
+      throw new Error("boom");
+    },
+  });
+  const window = input["investmentWindow"] as Record<string, unknown>;
+  Object.defineProperty(window, "lastWeek", { enumerable: true, get: () => 8 });
+
+  const result = validateCampaignConfig(input);
+  assert.deepEqual(result, {
+    ok: false,
+    issues: [
+      { path: "investmentWindow.lastWeek", message: "must be a data property, not a getter or setter" },
+      { path: "slotsPerWeek", message: "must be a data property, not a getter or setter" },
+    ],
+  });
+  assert.throws(() => captureCampaignConfig(input), InvalidCampaignConfigError);
+  assert.equal(calls, 0);
+});
+
+test("a getter does not hide independent issues in other fields", () => {
+  const input = { ...baselineInput(), slotsPerWeek: 0, maxInitialInvestments: 6 };
+  Object.defineProperty(input, "id", { enumerable: true, get: () => "poc-0.1-baseline" });
+  assert.deepEqual(issuesFor(input), [
+    { path: "id", message: "must be a data property, not a getter or setter" },
+    { path: "slotsPerWeek", message: "must be at least 1, got 0" },
+    {
+      path: "maxInitialInvestments",
+      message: "6 checks of 20000000 need 120000000, more than initialCapitalCents (100000000)",
+    },
+  ]);
+});
+
+test("a throwing proxy is reported as an issue, not an exception, whatever it throws", () => {
+  const throwing = (thrown: () => unknown) =>
+    new Proxy(baselineInput(), {
+      ownKeys() {
+        throw thrown();
+      },
+    });
+  const unreadable = "cannot be read: an unreadable value was thrown";
+  const table: Array<[() => unknown, string]> = [
+    [() => new Error("trap"), "cannot be read: trap"],
+    [() => "plain string", "cannot be read: plain string"],
+    [() => Object.create(null), unreadable],
+    [
+      () => ({
+        toString() {
+          throw new Error("nested");
+        },
+      }),
+      unreadable,
+    ],
+    [
+      () => {
+        const error = new Error("hidden");
+        Object.defineProperty(error, "message", {
+          get() {
+            throw new Error("nested");
+          },
+        });
+        return error;
+      },
+      unreadable,
+    ],
+  ];
+  for (const [thrown, message] of table) {
+    assert.deepEqual(issuesFor(throwing(thrown)), [{ path: "", message }]);
+  }
+});
+
+test("values inherited from Object.prototype are not read as settings", () => {
+  const { slotsPerWeek: _slots, ...input } = baselineInput();
+  const proto = Object.prototype as Record<string, unknown>;
+  proto["slotsPerWeek"] = 5;
+  try {
+    assert.deepEqual(issuesFor(input), [{ path: "slotsPerWeek", message: "is required" }]);
+  } finally {
+    delete proto["slotsPerWeek"];
+  }
 });

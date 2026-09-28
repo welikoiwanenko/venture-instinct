@@ -12,19 +12,36 @@ on:
         description: Pull request number
         required: true
 
+# Every PR comment starts a run of this workflow, even when the job below is skipped.
+# Only authorized review requests share the per-PR group (a newer request supersedes
+# an older one); any other comment gets a group of its own, so it can never cancel a
+# running review. Keep this condition in sync with the job's `if` (minus its always()).
 concurrency:
-  group: gemini-review-${{ github.event.issue.number || inputs.pr }}
+  group: >-
+    ${{ (github.event_name == 'workflow_dispatch' ||
+         (github.event.issue.pull_request &&
+          startsWith(github.event.comment.body, '/gemini-cli review') &&
+          github.event.comment.author_association == 'OWNER'))
+        && format('gemini-review-{0}', github.event.issue.number || inputs.pr)
+        || format('gemini-review-ignored-{0}', github.run_id) }}
   cancel-in-progress: true
 
 jobs:
   review:
+    # always(): on cancellation GitHub re-evaluates this condition and cancels the whole
+    # job if it is false (a condition without a status function implies success()).
+    # Keeping the job alive lets only its steps be cancelled, so `Report result`
+    # (always()) still records the cancellation. For unrelated comments it stays false.
     if: >-
+      always() && (
       github.event_name == 'workflow_dispatch' ||
       (github.event.issue.pull_request &&
        startsWith(github.event.comment.body, '/gemini-cli review') &&
-       github.event.comment.author_association == 'OWNER')
+       github.event.comment.author_association == 'OWNER'))
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # Step budgets: pending 2 + Gemini 8 + report 2 = 12 < 15, so a timed-out step is
+    # always reported before the job deadline cancels the job.
+    timeout-minutes: 15
     permissions:
       contents: read
       pull-requests: write
@@ -36,6 +53,7 @@ jobs:
     steps:
       - name: Mark review pending
         id: pr
+        timeout-minutes: 2
         run: |
           sha=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" -q .head.sha)
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
@@ -47,6 +65,8 @@ jobs:
 
       - name: Run Gemini pull request review
         id: gemini
+        # A hung review fails this step instead of the job, so it is still reported.
+        timeout-minutes: 8
         uses: google-github-actions/run-gemini-cli@f77273f4c914e4bf38440cf36a0369cb64a37489 # v0.1.22
         env:
           GEMINI_CLI_TRUST_WORKSPACE: 'true'
@@ -59,8 +79,12 @@ jobs:
             persistence, network, Linear or other external services, and reads must not
             advance game time or consume the domain RNG. Node runs .ts directly, so only
             erasable TypeScript syntax is allowed (no enums, namespaces, parameter
-            properties) and relative imports use the .ts extension. docs/ is a Ukrainian
-            design document: flag only internal contradictions, not style.
+            properties) and relative imports use the .ts extension. Exception:
+            src/cli/** is a developer adapter and may read files, parse arguments and
+            write to stdout/stderr; it must not duplicate domain rules and imports only
+            from src/app/. src/main.ts prints one runtime line when run directly.
+            docs/ is a Ukrainian design document: flag only internal contradictions,
+            not style.
         with:
           gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
           # Free tier: Pro has no quota and Flash allows ~20 requests/day (one review), so
@@ -87,23 +111,39 @@ jobs:
             ["https://github.com/gemini-cli-extensions/code-review"]
           prompt: /pr-code-review
 
-      # The action can exit 0 without posting (e.g. turn limit hit), so require a review
-      # submitted by this run. Cancelled runs (superseded by a newer one) report nothing.
-      # An exhausted Gemini API quota (HTTP 429) is not a finding about the PR, so it
-      # reports success ("skipped") instead of blocking the merge.
+      # Every run that set "pending" leaves a final state:
+      # - success: a review from this run was posted on the head commit;
+      # - success ("skipped"): the Gemini API quota is exhausted (HTTP 429), which is
+      #   not a finding about the PR, so it does not block the merge;
+      # - failure: Gemini failed, hit the 8-minute step timeout, or exited 0 without
+      #   posting (e.g. turn limit hit);
+      # - error: the run was cancelled (manually or by a newer review request). It is
+      #   only written while the status still points at this run,
+      #   so a newer request that already marked the commit pending is not overwritten.
       - name: Report result
-        if: ${{ !cancelled() && steps.pr.outputs.sha }}
+        if: ${{ always() && steps.pr.outputs.sha }}
+        timeout-minutes: 2
         run: |
+          if [ "$JOB_STATUS" = cancelled ]; then
+            current=$(gh api "repos/$GITHUB_REPOSITORY/commits/$SHA/status" \
+              -q '.statuses[] | select(.context == "gemini-review") | .target_url')
+            if [ "$current" != "$STATUS_URL" ]; then echo "gemini-review now belongs to another run"; exit 0; fi
+            gh api "repos/$GITHUB_REPOSITORY/statuses/$SHA" -f state=error \
+              -f context=gemini-review -f description="Gemini review cancelled; comment /gemini-cli review to retry" \
+              -f target_url="$STATUS_URL"
+            exit 0
+          fi
           posted=$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/reviews" \
             -q ".[] | select(.user.login == \"github-actions[bot]\" and .submitted_at != null and .commit_id == \"$SHA\" and .id > $LAST_REVIEW) | .id" | wc -l)
           if [ "$OUTCOME" = success ] && [ "$posted" -gt 0 ]; then state=success; desc="Gemini review posted"
           elif printf '%s' "$GEMINI_ERROR" | grep -qiE '"code": ?429|RESOURCE_EXHAUSTED|exhausted your .*quota'; then
             state=success; desc="Skipped: Gemini API quota exhausted, retry later"
             echo "::warning title=Gemini review skipped::Gemini API quota exhausted; comment /gemini-cli review again after it resets."
-          else state=failure; desc="Gemini review failed or posted nothing"; fi
+          else state=failure; desc="Gemini review failed, timed out or posted nothing"; fi
           gh api "repos/$GITHUB_REPOSITORY/statuses/${{ steps.pr.outputs.sha }}" -f state=$state \
             -f context=gemini-review -f description="$desc" -f target_url="$STATUS_URL"
         env:
+          JOB_STATUS: ${{ job.status }}
           OUTCOME: ${{ steps.gemini.outcome }}
           GEMINI_ERROR: ${{ steps.gemini.outputs.error }}
           SHA: ${{ steps.pr.outputs.sha }}

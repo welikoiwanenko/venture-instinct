@@ -30,7 +30,8 @@ reviews:
         Code must run on Node without a build step: only erasable TypeScript syntax
         (no enums, namespaces or parameter properties), relative imports with `.ts`.
         Exception: src/cli/** is a developer adapter and may read files, parse
-        arguments and write to stdout/stderr; it must not duplicate domain rules.
+        arguments and write to stdout/stderr; it must not duplicate domain rules and
+        imports only from src/app/. src/main.ts prints one runtime line when run directly.
     - path: "test/**"
       instructions: |
         Tests use node:test and node:assert/strict. Prefer deterministic tests;

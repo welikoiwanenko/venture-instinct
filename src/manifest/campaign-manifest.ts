@@ -7,6 +7,7 @@ import {
   type CampaignConfig,
 } from "../config/campaign-config.ts";
 import { createInitialCampaignState, type CampaignState } from "../campaign/initial-state.ts";
+import { describeThrown, isPlainRecord, snapshotPlainData, withSnapshotIssues } from "../data/plain-data.ts";
 import { canonicalHash, canonicalJson } from "./canonical-json.ts";
 
 /** Versions owned by the engine code. Bump one whenever its behaviour changes. */
@@ -18,11 +19,15 @@ export interface EngineVersions {
    * no random draws exist yet, so the seed does not influence the starting state.
    */
   readonly rng: number;
-  /** Financial arithmetic and rounding (whole-dollar safe integers). */
+  /**
+   * Financial arithmetic and rounding: money in whole cents, shares in basis points
+   * rounded down (src/campaign/money.ts, src/campaign/shares.ts).
+   * v1 was whole dollars.
+   */
   readonly math: number;
 }
 
-export const ENGINE_VERSIONS: EngineVersions = Object.freeze({ simulation: 1, rng: 1, math: 1 });
+export const ENGINE_VERSIONS: EngineVersions = Object.freeze({ simulation: 1, rng: 1, math: 2 });
 
 export const MANIFEST_FORMAT = 1;
 
@@ -75,6 +80,8 @@ const ENGINE_KEYS = ["simulation", "rng", "math"] as const;
 /**
  * Validates every input, reporting all issues at once, and builds a deeply frozen
  * manifest that shares nothing with the inputs. Pure: nothing is read from the host.
+ * Each input is read once into a snapshot; its validation, metadata and hash all
+ * come from that snapshot, and getters are rejected without being called.
  */
 export function createCampaignManifest(input: ManifestInput): ManifestResult {
   const issues: ManifestIssue[] = [];
@@ -137,18 +144,30 @@ function readSeed(value: unknown, issues: ManifestIssue[]): string | undefined {
 }
 
 function readScenario(
-  value: unknown,
+  untrusted: unknown,
   issues: ManifestIssue[],
 ): { id: string; contentVersion: number; contentHash: string } | undefined {
-  if (value === undefined) {
+  if (untrusted === undefined) {
     issues.push({ path: "scenario", message: "is required" });
     return undefined;
   }
-  if (!isRecord(value)) {
+  const snapshot = snapshotPlainData(untrusted, "scenario");
+  const local: ManifestIssue[] = [];
+  const scenario = checkScenario(snapshot.value, snapshot.issues.length === 0, local);
+  issues.push(...withSnapshotIssues(snapshot.issues, local));
+  return snapshot.issues.length === 0 ? scenario : undefined;
+}
+
+/** Hashes `value` only when `hashable` (a complete snapshot); a partial one is only checked. */
+function checkScenario(
+  value: unknown,
+  hashable: boolean,
+  issues: ManifestIssue[],
+): { id: string; contentVersion: number; contentHash: string } | undefined {
+  if (!isPlainRecord(value)) {
     issues.push({ path: "scenario", message: `must be an object, got ${describe(value)}` });
     return undefined;
   }
-  const before = issues.length;
   rejectUnknownKeys(value, SCENARIO_KEYS, "scenario", issues);
 
   const id = value["id"];
@@ -166,20 +185,30 @@ function readScenario(
   }
 
   let contentHash: string | undefined;
-  try {
-    contentHash = canonicalHash(value);
-  } catch (error) {
-    issues.push({ path: "scenario", message: `must be plain JSON data: ${(error as Error).message}` });
+  if (hashable) {
+    try {
+      contentHash = canonicalHash(value);
+    } catch (error) {
+      issues.push({ path: "scenario", message: `must be plain JSON data: ${describeThrown(error)}` });
+    }
   }
 
-  if (issues.length > before || typeof id !== "string" || contentVersion === undefined || contentHash === undefined) {
+  if (issues.length > 0 || typeof id !== "string" || contentVersion === undefined || contentHash === undefined) {
     return undefined;
   }
   return { id, contentVersion, contentHash };
 }
 
-function readEngine(value: unknown, issues: ManifestIssue[]): EngineVersions | undefined {
-  if (!isRecord(value)) {
+function readEngine(untrusted: unknown, issues: ManifestIssue[]): EngineVersions | undefined {
+  const snapshot = snapshotPlainData(untrusted, "engine");
+  const local: ManifestIssue[] = [];
+  const engine = checkEngine(snapshot.value, local);
+  issues.push(...withSnapshotIssues(snapshot.issues, local));
+  return snapshot.issues.length === 0 ? engine : undefined;
+}
+
+function checkEngine(value: unknown, issues: ManifestIssue[]): EngineVersions | undefined {
+  if (!isPlainRecord(value)) {
     issues.push({ path: "engine", message: `must be an object, got ${describe(value)}` });
     return undefined;
   }
@@ -233,14 +262,6 @@ function deepFreeze<T>(value: T): T {
     Object.freeze(value);
   }
   return value;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return false;
-  }
-  const proto: unknown = Object.getPrototypeOf(value);
-  return proto === Object.prototype || proto === null;
 }
 
 function describe(value: unknown): string {

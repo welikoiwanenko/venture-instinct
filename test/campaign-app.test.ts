@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 
 import { initializeCampaign, inspectCampaign, type Campaign } from "../src/app/campaign-app.ts";
-import { runCampaignInit, formatUsd } from "../src/cli/campaign-init.ts";
+import { runCampaignInit, formatCentsAsUsd } from "../src/cli/campaign-init.ts";
 import { POC_BASELINE_CONFIG } from "../src/config/baseline.ts";
 import { canonicalJson } from "../src/manifest/canonical-json.ts";
 
@@ -39,8 +39,9 @@ test("baseline campaign starts in planning week 1 with the §5 resources", () =>
   assert.equal(summary.planningWeek, 1);
   assert.equal(summary.completedWeeks, 0);
   assert.equal(summary.slotsAvailable, 5);
-  assert.equal(summary.capitalAvailableUsd, 1_000_000);
+  assert.equal(summary.capitalAvailableCents, 100_000_000);
   assert.equal(summary.initialInvestmentsMade, 0);
+  assert.equal(summary.checkSizeCents, 20_000_000);
   assert.equal(summary.portfolioSize, 0);
   assert.equal(summary.investmentWindowOpen, true);
   assert.equal(summary.scenarioId, "technical-fixture-empty");
@@ -101,6 +102,7 @@ test("CLI prints the summary and manifest; repeated runs are identical", () => {
   assert.match(first.stdout, /^Week {7}planning week 1; 0 of 156 completed$/m);
   assert.match(first.stdout, /^Slots {6}5 available$/m);
   assert.match(first.stdout, /^Capital {4}\$1,000,000 available$/m);
+  assert.match(first.stdout, /^Invested {3}0 of 5 initial checks of \$200,000$/m);
   assert.match(first.stdout, /^Portfolio {2}empty$/m);
   assert.match(first.stdout, /^Manifest:\n\{/m);
   assert.equal(runCli(["--seed", "demo-1", "--scenario", SCENARIO_PATH]).stdout, first.stdout);
@@ -130,7 +132,7 @@ test("CLI rejects invalid input on stderr with nothing on stdout", () => {
   }
 });
 
-test("documented npm command is deterministic across runs and locales", () => {
+test("CLI entry point prints identical output across processes, time zones and locales", () => {
   const outputs = [
     { TZ: "UTC", LANG: "en_US.UTF-8", LC_ALL: "en_US.UTF-8" },
     { TZ: "Asia/Kathmandu", LANG: "de_DE.UTF-8", LC_ALL: "de_DE.UTF-8" },
@@ -147,9 +149,19 @@ test("documented npm command is deterministic across runs and locales", () => {
   assert.equal(outputs[0], runCli(["--seed", "demo-1", "--scenario", SCENARIO_PATH]).stdout);
 });
 
-test("USD formatting does not depend on locale", () => {
-  assert.equal(formatUsd(1_000_000), "$1,000,000");
-  assert.equal(formatUsd(999), "$999");
-  assert.equal(formatUsd(0), "$0");
-  assert.equal(formatUsd(-1_200_000), "-$1,200,000");
+test("cents are shown as US dollars independently of locale", () => {
+  assert.equal(formatCentsAsUsd(100_000_000), "$1,000,000");
+  assert.equal(formatCentsAsUsd(99_900), "$999");
+  assert.equal(formatCentsAsUsd(1250), "$12.50");
+  assert.equal(formatCentsAsUsd(5), "$0.05");
+  assert.equal(formatCentsAsUsd(0), "$0");
+  assert.equal(formatCentsAsUsd(-120_000_000), "-$1,200,000");
+  assert.equal(formatCentsAsUsd(-1), "-$0.01");
+  assert.equal(formatCentsAsUsd(Number.MAX_SAFE_INTEGER), "$90,071,992,547,409.91");
+});
+
+test("the CLI imports only the application layer", () => {
+  const source = readFileSync(new URL("../src/cli/campaign-init.ts", import.meta.url), "utf8");
+  const local = [...source.matchAll(/from "(\.[^"]*)"/g)].map((match) => match[1]);
+  assert.deepEqual(local, ["../app/campaign-app.ts"]);
 });

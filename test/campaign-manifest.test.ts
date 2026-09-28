@@ -89,19 +89,20 @@ test("technical fixture: identical inputs give identical manifest and initial st
 });
 
 test("technical fixture manifest is pinned", () => {
+  // Re-pinned in VI-26 with math v2 and config v2 (money moved from dollars to cents).
   const manifest = build();
   assert.deepEqual(
     { ...manifest, config: undefined, initialState: undefined },
     {
       format: 1,
-      campaignId: "cmp-c290442a352d7c34",
+      campaignId: "cmp-d2bd6e6571e67143",
       seed: SEED,
       scenario: { id: "technical-fixture-empty", contentHash: "sha256:de3bf02e2a9814fb9e6f96614bad51c55d9a1a1ba0ac385628270e5f9fe4924e" },
-      versions: { simulation: 1, content: 1, config: 1, rng: 1, math: 1 },
+      versions: { simulation: 1, content: 1, config: 2, rng: 1, math: 2 },
       config: undefined,
-      configHash: "sha256:f60bfa9687940bf4bfcee975148282ba30c10ae2cc628693b5266ef1368c44a7",
+      configHash: "sha256:6a46363af32aecdb1a886086b944088c3bcdb1388e10b910717308db9f9c8627",
       initialState: undefined,
-      initialStateHash: "sha256:2d89a933c21dbe0ec9cebbd3f0c3223bfb93a321b132a5251386afce95ec8e74",
+      initialStateHash: "sha256:14e583e977939cacbb57dc184c5f5f9b3610fdba3cb53ffe3d9290a4cb87440b",
     },
   );
   assert.deepEqual(manifest.config, POC_BASELINE_CONFIG);
@@ -109,7 +110,7 @@ test("technical fixture manifest is pinned", () => {
     planningWeek: 1,
     completedWeeks: 0,
     slots: { week: 1, remaining: 5 },
-    budget: { availableUsd: 1_000_000, checksPaid: 0 },
+    budget: { availableCents: 100_000_000, checksPaid: 0 },
     portfolio: [],
   });
 });
@@ -155,14 +156,14 @@ test("a different seed is recorded; the Alpha starting state does not depend on 
 
 test("changed configuration is captured even without a version bump", () => {
   const base = build();
-  const edited = build({ config: { ...baselineConfig(), checkSizeUsd: 100_000 } });
-  assert.equal(edited.versions.config, 1);
-  assert.equal(edited.config.checkSizeUsd, 100_000);
+  const edited = build({ config: { ...baselineConfig(), checkSizeCents: 10_000_000 } });
+  assert.equal(edited.versions.config, 2);
+  assert.equal(edited.config.checkSizeCents, 10_000_000);
   assert.notEqual(edited.configHash, base.configHash);
   assert.notEqual(edited.campaignId, base.campaignId);
 
-  const bumped = build({ config: { ...baselineConfig(), version: 2 } });
-  assert.equal(bumped.versions.config, 2);
+  const bumped = build({ config: { ...baselineConfig(), version: 3 } });
+  assert.equal(bumped.versions.config, 3);
   assert.notEqual(bumped.configHash, base.configHash);
 
   const slots = build({ config: { ...baselineConfig(), slotsPerWeek: 4 } });
@@ -247,4 +248,80 @@ test("the manifest is deeply frozen and independent of its inputs", () => {
   assert.ok(Object.isFrozen(result.manifest.config.investmentWindow));
   assert.ok(Object.isFrozen(result.manifest.initialState.slots));
   assert.ok(Object.isFrozen(result.manifest.initialState.portfolio));
+});
+
+test("scenario metadata and hash come from one snapshot; getters are rejected", () => {
+  let reads = 0;
+  const scenario = fixtureScenario();
+  Object.defineProperty(scenario, "id", {
+    enumerable: true,
+    get() {
+      reads += 1;
+      return reads === 1 ? "technical-fixture-empty" : "something-else";
+    },
+  });
+  const content = scenario["content"] as Record<string, unknown>;
+  Object.defineProperty(content, "purpose", {
+    enumerable: true,
+    get() {
+      throw new Error("boom");
+    },
+  });
+  const issues = issuesFor({ scenario });
+  assert.deepEqual(issues, [
+    { path: "scenario.id", message: "must be a data property, not a getter or setter" },
+    { path: "scenario.content.purpose", message: "must be a data property, not a getter or setter" },
+  ]);
+  assert.equal(reads, 0);
+});
+
+test("getters in config or engine versions are issues, not exceptions", () => {
+  const config = baselineConfig();
+  Object.defineProperty(config, "horizonWeeks", {
+    enumerable: true,
+    get() {
+      throw new Error("boom");
+    },
+  });
+  const engine = { ...ENGINE_VERSIONS };
+  Object.defineProperty(engine, "math", { enumerable: true, get: () => 2 });
+  assert.deepEqual(issuesFor({ config, engine }), [
+    { path: "engine.math", message: "must be a data property, not a getter or setter" },
+    { path: "config.horizonWeeks", message: "must be a data property, not a getter or setter" },
+  ]);
+});
+
+test("a scenario hash equals the hash of the same data without getters or prototypes", () => {
+  const plain = fixtureScenario();
+  const nullProto = Object.assign(Object.create(null) as Record<string, unknown>, plain);
+  assert.equal(build({ scenario: nullProto }).scenario.contentHash, build().scenario.contentHash);
+});
+
+test("a scenario getter does not hide other scenario issues or produce a hash", () => {
+  const scenario = { ...fixtureScenario(), contentVersion: 0 };
+  Object.defineProperty(scenario, "id", { enumerable: true, get: () => "technical-fixture-empty" });
+  assert.deepEqual(issuesFor({ scenario }), [
+    { path: "scenario.id", message: "must be a data property, not a getter or setter" },
+    { path: "scenario.contentVersion", message: "must be a positive integer, got 0" },
+  ]);
+});
+
+test("a nested proxy that throws a non-Error while hashing is an issue, not an exception", () => {
+  // Non-plain on the first prototype read, so the snapshot keeps it as is; the second
+  // read (while hashing) throws null, which has no message to read.
+  let reads = 0;
+  const nested = new Proxy(
+    {},
+    {
+      getPrototypeOf() {
+        reads += 1;
+        if (reads > 1) throw null;
+        return Map.prototype;
+      },
+    },
+  );
+  const scenario = { ...fixtureScenario(), content: { nested } };
+  assert.deepEqual(issuesFor({ scenario }), [
+    { path: "scenario", message: "must be plain JSON data: an unreadable value was thrown" },
+  ]);
 });
