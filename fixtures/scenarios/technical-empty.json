@@ -1,0 +1,8 @@
+{
+  "id": "technical-fixture-empty",
+  "contentVersion": 1,
+  "content": {
+    "purpose": "Technical reproducibility fixture. Not a playable scenario: no companies, founders or narrative.",
+    "companies": []
+  }
+}
