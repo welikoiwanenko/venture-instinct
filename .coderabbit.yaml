@@ -4,6 +4,7 @@ language: en-US
 reviews:
   profile: chill
   request_changes_workflow: false
+  fail_commit_status: true
   high_level_summary: true
   collapse_walkthrough: true
   changed_files_summary: false
