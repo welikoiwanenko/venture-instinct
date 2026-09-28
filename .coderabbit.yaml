@@ -1,0 +1,46 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: en-US
+
+reviews:
+  profile: chill
+  request_changes_workflow: false
+  high_level_summary: true
+  collapse_walkthrough: true
+  changed_files_summary: false
+  sequence_diagrams: false
+  estimate_code_review_effort: false
+  in_progress_fortune: false
+  poem: false
+  related_prs: false
+  suggested_labels: false
+  suggested_reviewers: false
+  assess_linked_issues: true
+  auto_review:
+    enabled: true
+    drafts: false
+  path_filters:
+    - "!package-lock.json"
+  path_instructions:
+    - path: "src/**"
+      instructions: |
+        Domain runtime (docs/design-doc.md §17.1). Flag any import of UI, terminal,
+        persistence, network, Linear or other external services.
+        Reads must not advance game time or consume the domain RNG.
+        Code must run on Node without a build step: only erasable TypeScript syntax
+        (no enums, namespaces or parameter properties), relative imports with `.ts`.
+    - path: "test/**"
+      instructions: |
+        Tests use node:test and node:assert/strict. Prefer deterministic tests;
+        flag unseeded randomness or reliance on wall-clock time.
+    - path: "docs/**"
+      instructions: |
+        Design documents in Ukrainian. Review only for internal contradictions with
+        the rest of the document, not for style or grammar.
+
+knowledge_base:
+  linear:
+    usage: enabled
+    team_keys: ["VI"]
+
+chat:
+  auto_reply: true
