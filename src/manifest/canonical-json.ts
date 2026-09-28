@@ -42,7 +42,8 @@ function write(value: unknown, path: string, ancestors: Set<object>): string {
   ancestors.add(value);
   let out: string;
   if (Array.isArray(value)) {
-    out = `[${value.map((item: unknown, index) => write(item, `${path}[${index}]`, ancestors)).join(",")}]`;
+    // Array.from visits holes as undefined, so sparse arrays are rejected, not written as "[,1]".
+    out = `[${Array.from(value, (item: unknown, index) => write(item, `${path}[${index}]`, ancestors)).join(",")}]`;
   } else {
     const proto: unknown = Object.getPrototypeOf(value);
     if (proto !== Object.prototype && proto !== null) {

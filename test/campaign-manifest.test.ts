@@ -69,7 +69,7 @@ test("canonical JSON sorts keys by code unit and has no whitespace", () => {
 test("canonical JSON rejects values JSON cannot represent exactly", () => {
   const cyclic: Record<string, unknown> = {};
   cyclic["self"] = cyclic;
-  for (const bad of [Number.NaN, Number.POSITIVE_INFINITY, undefined, { a: undefined }, new Date(0), new Map(), 1n, cyclic]) {
+  for (const bad of [Number.NaN, Number.POSITIVE_INFINITY, undefined, { a: undefined }, new Date(0), new Map(), 1n, cyclic, new Array(2), { list: [1, , 3] }]) {
     assert.throws(() => canonicalJson(bad), TypeError, String(bad));
   }
   // A shared (non-cyclic) reference is fine.
