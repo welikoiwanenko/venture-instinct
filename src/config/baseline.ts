@@ -6,11 +6,11 @@ import { captureCampaignConfig } from "./campaign-config.ts";
 
 export const POC_BASELINE_CONFIG: CampaignConfig = captureCampaignConfig({
   id: "poc-0.1-baseline",
-  version: 1,
+  version: 2, // v2: money fields moved from whole dollars to cents
   investmentWindow: { firstWeek: 1, lastWeek: 8 },
   horizonWeeks: 156,
   slotsPerWeek: 5,
-  initialCapitalUsd: 1_000_000,
-  checkSizeUsd: 200_000,
+  initialCapitalCents: 100_000_000, // $1,000,000
+  checkSizeCents: 20_000_000, // $200,000
   maxInitialInvestments: 5,
 });

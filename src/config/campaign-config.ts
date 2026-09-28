@@ -2,6 +2,8 @@
 // (docs/design-doc.md §1, §5). A campaign captures one frozen copy at
 // initialization and keeps it for the whole run (§18 manifest).
 
+import { isPlainRecord, snapshotPlainData } from "../data/plain-data.ts";
+
 export interface InvestmentWindow {
   /** First week (1-based, inclusive) in which initial investments are allowed. */
   readonly firstWeek: number;
@@ -19,10 +21,10 @@ export interface CampaignConfig {
   readonly horizonWeeks: number;
   /** Action slots restored at the start of every week; leftovers do not carry over. */
   readonly slotsPerWeek: number;
-  /** Whole US dollars. */
-  readonly initialCapitalUsd: number;
-  /** Whole US dollars paid for each initial investment. */
-  readonly checkSizeUsd: number;
+  /** Whole US cents. */
+  readonly initialCapitalCents: number;
+  /** Whole US cents paid for each initial investment. */
+  readonly checkSizeCents: number;
   readonly maxInitialInvestments: number;
 }
 
@@ -52,8 +54,8 @@ const CONFIG_KEYS = [
   "investmentWindow",
   "horizonWeeks",
   "slotsPerWeek",
-  "initialCapitalUsd",
-  "checkSizeUsd",
+  "initialCapitalCents",
+  "checkSizeCents",
   "maxInitialInvestments",
 ] as const;
 
@@ -61,11 +63,18 @@ const WINDOW_KEYS = ["firstWeek", "lastWeek"] as const;
 
 /**
  * Checks untrusted input and returns a fresh config that shares nothing with it.
- * All issues are reported at once, each tied to the field that caused it.
+ * All issues are reported at once, each tied to the field that caused it. The
+ * input is read once; getters are reported as issues and never called.
  */
-export function validateCampaignConfig(input: unknown): ConfigValidationResult {
+export function validateCampaignConfig(untrusted: unknown): ConfigValidationResult {
   const issues: ConfigIssue[] = [];
-  if (!isRecord(input)) {
+  // Every check below reads this one snapshot, never `untrusted` again.
+  const snapshot = snapshotPlainData(untrusted);
+  if (!snapshot.ok) {
+    return { ok: false, issues: snapshot.issues };
+  }
+  const input = snapshot.value;
+  if (!isPlainRecord(input)) {
     return { ok: false, issues: [{ path: "", message: `must be an object, got ${describe(input)}` }] };
   }
   rejectUnknownKeys(input, CONFIG_KEYS, "", issues);
@@ -75,8 +84,8 @@ export function validateCampaignConfig(input: unknown): ConfigValidationResult {
   const { firstWeek, lastWeek } = readWindow(input, issues);
   const horizonWeeks = readInteger(input, "horizonWeeks", "", 1, issues);
   const slotsPerWeek = readInteger(input, "slotsPerWeek", "", 1, issues);
-  const initialCapitalUsd = readInteger(input, "initialCapitalUsd", "", 1, issues);
-  const checkSizeUsd = readInteger(input, "checkSizeUsd", "", 1, issues);
+  const initialCapitalCents = readInteger(input, "initialCapitalCents", "", 1, issues);
+  const checkSizeCents = readInteger(input, "checkSizeCents", "", 1, issues);
   const maxInitialInvestments = readInteger(input, "maxInitialInvestments", "", 1, issues);
 
   // Cross-field checks run whenever their own inputs are valid, so one bad field
@@ -93,14 +102,15 @@ export function validateCampaignConfig(input: unknown): ConfigValidationResult {
       message: `must not be after horizonWeeks (${horizonWeeks}), got ${lastWeek}`,
     });
   }
-  if (initialCapitalUsd !== undefined && checkSizeUsd !== undefined && maxInitialInvestments !== undefined) {
-    const fullDeployment = checkSizeUsd * maxInitialInvestments;
-    if (fullDeployment > initialCapitalUsd) {
+  if (initialCapitalCents !== undefined && checkSizeCents !== undefined && maxInitialInvestments !== undefined) {
+    const fullDeployment = checkSizeCents * maxInitialInvestments;
+    // An unsafe product is necessarily larger than any safe initialCapitalCents.
+    if (!Number.isSafeInteger(fullDeployment) || fullDeployment > initialCapitalCents) {
       issues.push({
         path: "maxInitialInvestments",
         message:
-          `${maxInitialInvestments} checks of ${checkSizeUsd} need ${fullDeployment}, ` +
-          `more than initialCapitalUsd (${initialCapitalUsd})`,
+          `${maxInitialInvestments} checks of ${checkSizeCents} need ${fullDeployment}, ` +
+          `more than initialCapitalCents (${initialCapitalCents})`,
       });
     }
   }
@@ -113,8 +123,8 @@ export function validateCampaignConfig(input: unknown): ConfigValidationResult {
     lastWeek === undefined ||
     horizonWeeks === undefined ||
     slotsPerWeek === undefined ||
-    initialCapitalUsd === undefined ||
-    checkSizeUsd === undefined ||
+    initialCapitalCents === undefined ||
+    checkSizeCents === undefined ||
     maxInitialInvestments === undefined
   ) {
     return { ok: false, issues };
@@ -127,8 +137,8 @@ export function validateCampaignConfig(input: unknown): ConfigValidationResult {
       investmentWindow: { firstWeek, lastWeek },
       horizonWeeks,
       slotsPerWeek,
-      initialCapitalUsd,
-      checkSizeUsd,
+      initialCapitalCents,
+      checkSizeCents,
       maxInitialInvestments,
     },
   };
@@ -174,7 +184,7 @@ function readWindow(
     issues.push({ path: "investmentWindow", message: "is required" });
     return { firstWeek: undefined, lastWeek: undefined };
   }
-  if (!isRecord(value)) {
+  if (!isPlainRecord(value)) {
     issues.push({ path: "investmentWindow", message: `must be an object, got ${describe(value)}` });
     return { firstWeek: undefined, lastWeek: undefined };
   }
@@ -220,14 +230,6 @@ function rejectUnknownKeys(
       issues.push({ path: parent === "" ? key : `${parent}.${key}`, message: "is not a known setting" });
     }
   }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return false;
-  }
-  const proto: unknown = Object.getPrototypeOf(value);
-  return proto === Object.prototype || proto === null;
 }
 
 function describe(value: unknown): string {

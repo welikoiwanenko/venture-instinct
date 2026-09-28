@@ -31,6 +31,11 @@ jobs:
   # Gemini review is manual (gemini-review.yml); mark it "not requested" on each new
   # head so the required status only blocks when a requested review fails.
   # Fork PRs get a read-only token, so they need a manual `/gemini-cli review` instead.
+  # Accepted risk (R3, decided 2026-09-28, VI-26): if the owner requests a review in the
+  # few seconds after a push, before this job runs, this job may see no status yet and
+  # overwrite the review's "pending" with "not requested". The requested run still
+  # reports its own final state. Intentionally not fixed; do not reopen in reviews
+  # unless this workflow design changes.
   gemini-review-default:
     if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
