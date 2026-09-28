@@ -58,7 +58,8 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         with:
           gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
-          gemini_model: ${{ vars.GEMINI_MODEL }}
+          # Pro has no free-tier quota; the `flash` alias tracks the current Flash model.
+          gemini_model: ${{ vars.GEMINI_MODEL || 'flash' }}
           workflow_name: gemini-review
           github_pr_number: ${{ github.event.pull_request.number }}
           settings: |-
