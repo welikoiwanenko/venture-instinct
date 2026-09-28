@@ -29,6 +29,8 @@ reviews:
         Reads must not advance game time or consume the domain RNG.
         Code must run on Node without a build step: only erasable TypeScript syntax
         (no enums, namespaces or parameter properties), relative imports with `.ts`.
+        Exception: src/cli/** is a developer adapter and may read files, parse
+        arguments and write to stdout/stderr; it must not duplicate domain rules.
     - path: "test/**"
       instructions: |
         Tests use node:test and node:assert/strict. Prefer deterministic tests;

@@ -8,6 +8,7 @@
   },
   "scripts": {
     "start": "node src/main.ts",
+    "campaign": "node src/cli/campaign-init.ts",
     "typecheck": "tsc",
     "test": "node --test"
   },

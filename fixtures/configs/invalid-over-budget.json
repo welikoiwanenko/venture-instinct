@@ -1,0 +1,10 @@
+{
+  "id": "poc-0.1-baseline",
+  "version": 1,
+  "investmentWindow": { "firstWeek": 1, "lastWeek": 8 },
+  "horizonWeeks": 156,
+  "slotsPerWeek": 0,
+  "initialCapitalUsd": 1000000,
+  "checkSizeUsd": 200000,
+  "maxInitialInvestments": 6
+}
