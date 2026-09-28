@@ -70,6 +70,12 @@ test("slot costs must be non-negative integers", () => {
   assert.deepEqual(week, { week: 1, remaining: 5 });
 });
 
+test("a malformed slot balance is rejected as invalid input", () => {
+  for (const remaining of [Number.NaN, -1, 2.5]) {
+    assert.throws(() => spendSlots({ week: 4, remaining }, 1), RangeError, `remaining ${remaining}`);
+  }
+});
+
 test("unused slots do not carry over into a new week", () => {
   const spent = spendSlots(openWeekSlots(2, config), 1);
   assert.ok(spent.ok);

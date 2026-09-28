@@ -21,9 +21,12 @@ export function openWeekSlots(week: Week, config: CampaignConfig): SlotBalance {
 
 /**
  * Spends `cost` slots. Rejection returns a reason and leaves `balance` untouched;
- * success returns a new balance. Malformed costs throw.
+ * success returns a new balance. Malformed balances and costs throw.
  */
 export function spendSlots(balance: SlotBalance, cost: number): SpendSlotsResult {
+  if (!Number.isSafeInteger(balance.remaining) || balance.remaining < 0) {
+    throw new RangeError(`remaining slots must be a non-negative integer, got ${String(balance.remaining)}`);
+  }
   if (!Number.isSafeInteger(cost) || cost < 0) {
     throw new RangeError(`slot cost must be a non-negative integer, got ${String(cost)}`);
   }
