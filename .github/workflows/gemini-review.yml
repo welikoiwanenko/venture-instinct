@@ -1,47 +1,62 @@
 name: Gemini Review
 
+# Manual: comment `/gemini-cli review` on a PR (repo owner only), or run from the Actions tab.
+# Reports the `gemini-review` commit status on the PR head; ci.yml sets it to success
+# ("not requested") on every push, so it only blocks merging when a requested review fails.
 on:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: Pull request number
+        required: true
 
 concurrency:
-  group: gemini-review-${{ github.event.pull_request.number }}
+  group: gemini-review-${{ github.event.issue.number || inputs.pr }}
   cancel-in-progress: true
 
 jobs:
   review:
-    # Secrets are unavailable to fork PRs; skip drafts to save free-tier quota.
-    if: github.event.pull_request.head.repo.full_name == github.repository && !github.event.pull_request.draft
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.issue.pull_request &&
+       startsWith(github.event.comment.body, '/gemini-cli review') &&
+       github.event.comment.author_association == 'OWNER')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: read
       issues: write
       pull-requests: write
+      statuses: write
     env:
-      HAS_GEMINI_KEY: ${{ secrets.GEMINI_API_KEY != '' }}
+      GH_TOKEN: ${{ github.token }}
+      PR_NUMBER: ${{ github.event.issue.number || inputs.pr }}
+      STATUS_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
-      - name: Skip without GEMINI_API_KEY
-        if: env.HAS_GEMINI_KEY != 'true'
-        run: echo "::notice::GEMINI_API_KEY secret is not set; skipping Gemini review."
+      - name: Mark review pending
+        id: pr
+        run: |
+          sha=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" -q .head.sha)
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          gh api "repos/$GITHUB_REPOSITORY/statuses/$sha" -f state=pending \
+            -f context=gemini-review -f description="Gemini review running" -f target_url="$STATUS_URL"
 
+      # Default branch only: never check out PR code in a comment-triggered job with secrets.
       - uses: actions/checkout@v7
-        if: env.HAS_GEMINI_KEY == 'true'
         with:
           persist-credentials: false
 
       - name: Prepare prompt context
-        if: env.HAS_GEMINI_KEY == 'true'
         run: |
           mkdir -p .gemini
           jq -n \
-            --arg repo "$REPOSITORY" \
+            --arg repo "$GITHUB_REPOSITORY" \
             --arg pr "$PR_NUMBER" \
             --arg context "$ADDITIONAL_CONTEXT" \
             '{repository: $repo, pull_request_number: $pr, additional_context: $context}' > .gemini/context.json
         env:
-          REPOSITORY: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
           ADDITIONAL_CONTEXT: >-
             src/ is the domain runtime (docs/design-doc.md §17.1): it must not import UI,
             persistence, network, Linear or other external services, and reads must not
@@ -51,7 +66,7 @@ jobs:
             design document: flag only internal contradictions, not style.
 
       - name: Run Gemini pull request review
-        if: env.HAS_GEMINI_KEY == 'true'
+        id: gemini
         uses: google-github-actions/run-gemini-cli@v0
         env:
           GEMINI_CLI_TRUST_WORKSPACE: 'true'
@@ -61,7 +76,7 @@ jobs:
           # Pro has no free-tier quota; the `flash` alias tracks the current Flash model.
           gemini_model: ${{ vars.GEMINI_MODEL || 'flash' }}
           workflow_name: gemini-review
-          github_pr_number: ${{ github.event.pull_request.number }}
+          github_pr_number: ${{ env.PR_NUMBER }}
           settings: |-
             {
               "model": { "maxSessionTurns": 25 },
@@ -78,3 +93,12 @@ jobs:
           extensions: |
             ["https://github.com/gemini-cli-extensions/code-review"]
           prompt: /pr-code-review
+
+      - name: Report result
+        if: always() && steps.pr.outputs.sha
+        run: |
+          if [ "$OUTCOME" = success ]; then state=success; desc="Gemini review posted"; else state=failure; desc="Gemini review failed"; fi
+          gh api "repos/$GITHUB_REPOSITORY/statuses/${{ steps.pr.outputs.sha }}" -f state=$state \
+            -f context=gemini-review -f description="$desc" -f target_url="$STATUS_URL"
+        env:
+          OUTCOME: ${{ steps.gemini.outcome }}
