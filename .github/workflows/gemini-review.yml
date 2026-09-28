@@ -1,0 +1,79 @@
+name: Gemini Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+concurrency:
+  group: gemini-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    # Secrets are unavailable to fork PRs; skip drafts to save free-tier quota.
+    if: github.event.pull_request.head.repo.full_name == github.repository && !github.event.pull_request.draft
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    env:
+      HAS_GEMINI_KEY: ${{ secrets.GEMINI_API_KEY != '' }}
+    steps:
+      - name: Skip without GEMINI_API_KEY
+        if: env.HAS_GEMINI_KEY != 'true'
+        run: echo "::notice::GEMINI_API_KEY secret is not set; skipping Gemini review."
+
+      - uses: actions/checkout@v7
+        if: env.HAS_GEMINI_KEY == 'true'
+        with:
+          persist-credentials: false
+
+      - name: Prepare prompt context
+        if: env.HAS_GEMINI_KEY == 'true'
+        run: |
+          mkdir -p .gemini
+          jq -n \
+            --arg repo "$REPOSITORY" \
+            --arg pr "$PR_NUMBER" \
+            --arg context "$ADDITIONAL_CONTEXT" \
+            '{repository: $repo, pull_request_number: $pr, additional_context: $context}' > .gemini/context.json
+        env:
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          ADDITIONAL_CONTEXT: >-
+            src/ is the domain runtime (docs/design-doc.md §17.1): it must not import UI,
+            persistence, network, Linear or other external services, and reads must not
+            advance game time or consume the domain RNG. Node runs .ts directly, so only
+            erasable TypeScript syntax is allowed (no enums, namespaces, parameter
+            properties) and relative imports use the .ts extension. docs/ is a Ukrainian
+            design document: flag only internal contradictions, not style.
+
+      - name: Run Gemini pull request review
+        if: env.HAS_GEMINI_KEY == 'true'
+        uses: google-github-actions/run-gemini-cli@v0
+        env:
+          GEMINI_CLI_TRUST_WORKSPACE: 'true'
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
+          gemini_model: ${{ vars.GEMINI_MODEL }}
+          workflow_name: gemini-review
+          github_pr_number: ${{ github.event.pull_request.number }}
+          settings: |-
+            {
+              "model": { "maxSessionTurns": 25 },
+              "mcpServers": {
+                "github": {
+                  "command": "docker",
+                  "args": ["run", "-i", "--rm", "-e", "GITHUB_PERSONAL_ACCESS_TOKEN", "ghcr.io/github/github-mcp-server:v0.27.0"],
+                  "includeTools": ["add_comment_to_pending_review", "pull_request_read", "pull_request_review_write"],
+                  "env": { "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_TOKEN}" }
+                }
+              },
+              "tools": { "core": [] }
+            }
+          extensions: |
+            ["https://github.com/gemini-cli-extensions/code-review"]
+          prompt: /pr-code-review
