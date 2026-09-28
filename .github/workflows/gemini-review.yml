@@ -63,8 +63,9 @@ jobs:
             design document: flag only internal contradictions, not style.
         with:
           gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
-          # Pro has no free-tier quota; the `flash` alias tracks the current Flash model.
-          gemini_model: ${{ vars.GEMINI_MODEL || 'flash' }}
+          # Free tier: Pro has no quota and Flash allows ~20 requests/day (one review), so
+          # default to Flash-Lite. Override with the GEMINI_MODEL repository variable.
+          gemini_model: ${{ vars.GEMINI_MODEL || 'gemini-3.5-flash-lite' }}
           workflow_name: gemini-review
           github_pr_number: ${{ env.PR_NUMBER }}
           settings: |-
