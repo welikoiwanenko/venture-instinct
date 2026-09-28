@@ -42,8 +42,17 @@ function write(value: unknown, path: string, ancestors: Set<object>): string {
   ancestors.add(value);
   let out: string;
   if (Array.isArray(value)) {
-    // Array.from visits holes as undefined, so sparse arrays are rejected, not written as "[,1]".
-    out = `[${Array.from(value, (item: unknown, index) => write(item, `${path}[${index}]`, ancestors)).join(",")}]`;
+    // Read by index, never through Symbol.iterator (which callers can override);
+    // a hole is rejected like undefined instead of being written as "[,1]".
+    const items: string[] = [];
+    for (let index = 0; index < value.length; index++) {
+      const itemPath = `${path}[${index}]`;
+      if (!Object.hasOwn(value, index)) {
+        throw new TypeError(`${itemPath}: undefined has no JSON representation`);
+      }
+      items.push(write(value[index], itemPath, ancestors));
+    }
+    out = `[${items.join(",")}]`;
   } else {
     const proto: unknown = Object.getPrototypeOf(value);
     if (proto !== Object.prototype && proto !== null) {

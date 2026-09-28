@@ -72,6 +72,10 @@ test("canonical JSON rejects values JSON cannot represent exactly", () => {
   for (const bad of [Number.NaN, Number.POSITIVE_INFINITY, undefined, { a: undefined }, new Date(0), new Map(), 1n, cyclic, new Array(2), { list: [1, , 3] }]) {
     assert.throws(() => canonicalJson(bad), TypeError, String(bad));
   }
+  // Indexed values are serialized, not whatever an overridden iterator yields.
+  const spoofed = [1];
+  Object.defineProperty(spoofed, Symbol.iterator, { value: () => [2].values() });
+  assert.equal(canonicalJson(spoofed), "[1]");
   // A shared (non-cyclic) reference is fine.
   const shared = { x: 1 };
   assert.equal(canonicalJson([shared, shared]), '[{"x":1},{"x":1}]');
