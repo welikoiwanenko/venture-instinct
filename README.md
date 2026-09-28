@@ -18,4 +18,5 @@ npm test           # node:test runner over test/
 ## Layout
 
 - `src/` — domain runtime; no UI, persistence, network or Linear dependencies.
+- `src/config/baseline.ts` — campaign balance (design §5). Changing a value means a new `version`; a campaign keeps the frozen config it captured at start (`captureCampaignConfig`).
 - `test/` — `*.test.ts` files for the built-in Node test runner.
