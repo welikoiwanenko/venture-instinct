@@ -72,17 +72,25 @@ export function validateCampaignConfig(input: unknown): ConfigValidationResult {
 
   const id = readId(input, issues);
   const version = readInteger(input, "version", "", 1, issues);
-  const investmentWindow = readWindow(input, issues);
+  const { firstWeek, lastWeek } = readWindow(input, issues);
   const horizonWeeks = readInteger(input, "horizonWeeks", "", 1, issues);
   const slotsPerWeek = readInteger(input, "slotsPerWeek", "", 1, issues);
   const initialCapitalUsd = readInteger(input, "initialCapitalUsd", "", 1, issues);
   const checkSizeUsd = readInteger(input, "checkSizeUsd", "", 1, issues);
   const maxInitialInvestments = readInteger(input, "maxInitialInvestments", "", 1, issues);
 
-  if (investmentWindow !== undefined && horizonWeeks !== undefined && investmentWindow.lastWeek > horizonWeeks) {
+  // Cross-field checks run whenever their own inputs are valid, so one bad field
+  // never hides an unrelated inconsistency.
+  if (firstWeek !== undefined && lastWeek !== undefined && lastWeek < firstWeek) {
     issues.push({
       path: "investmentWindow.lastWeek",
-      message: `must not be after horizonWeeks (${horizonWeeks}), got ${investmentWindow.lastWeek}`,
+      message: `must not be before investmentWindow.firstWeek (${firstWeek}), got ${lastWeek}`,
+    });
+  }
+  if (lastWeek !== undefined && horizonWeeks !== undefined && lastWeek > horizonWeeks) {
+    issues.push({
+      path: "investmentWindow.lastWeek",
+      message: `must not be after horizonWeeks (${horizonWeeks}), got ${lastWeek}`,
     });
   }
   if (initialCapitalUsd !== undefined && checkSizeUsd !== undefined && maxInitialInvestments !== undefined) {
@@ -101,7 +109,8 @@ export function validateCampaignConfig(input: unknown): ConfigValidationResult {
     issues.length > 0 ||
     id === undefined ||
     version === undefined ||
-    investmentWindow === undefined ||
+    firstWeek === undefined ||
+    lastWeek === undefined ||
     horizonWeeks === undefined ||
     slotsPerWeek === undefined ||
     initialCapitalUsd === undefined ||
@@ -115,7 +124,7 @@ export function validateCampaignConfig(input: unknown): ConfigValidationResult {
     config: {
       id,
       version,
-      investmentWindow,
+      investmentWindow: { firstWeek, lastWeek },
       horizonWeeks,
       slotsPerWeek,
       initialCapitalUsd,
@@ -156,30 +165,24 @@ function readId(input: Record<string, unknown>, issues: ConfigIssue[]): string |
   return value;
 }
 
-function readWindow(input: Record<string, unknown>, issues: ConfigIssue[]): InvestmentWindow | undefined {
+function readWindow(
+  input: Record<string, unknown>,
+  issues: ConfigIssue[],
+): { firstWeek: number | undefined; lastWeek: number | undefined } {
   const value = input["investmentWindow"];
   if (value === undefined) {
     issues.push({ path: "investmentWindow", message: "is required" });
-    return undefined;
+    return { firstWeek: undefined, lastWeek: undefined };
   }
   if (!isRecord(value)) {
     issues.push({ path: "investmentWindow", message: `must be an object, got ${describe(value)}` });
-    return undefined;
+    return { firstWeek: undefined, lastWeek: undefined };
   }
   rejectUnknownKeys(value, WINDOW_KEYS, "investmentWindow", issues);
-  const firstWeek = readInteger(value, "firstWeek", "investmentWindow", 1, issues);
-  const lastWeek = readInteger(value, "lastWeek", "investmentWindow", 1, issues);
-  if (firstWeek === undefined || lastWeek === undefined) {
-    return undefined;
-  }
-  if (lastWeek < firstWeek) {
-    issues.push({
-      path: "investmentWindow.lastWeek",
-      message: `must not be before investmentWindow.firstWeek (${firstWeek}), got ${lastWeek}`,
-    });
-    return undefined;
-  }
-  return { firstWeek, lastWeek };
+  return {
+    firstWeek: readInteger(value, "firstWeek", "investmentWindow", 1, issues),
+    lastWeek: readInteger(value, "lastWeek", "investmentWindow", 1, issues),
+  };
 }
 
 function readInteger(

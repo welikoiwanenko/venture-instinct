@@ -85,6 +85,14 @@ const invalidFixtures: ReadonlyArray<{ name: string; input: unknown; issues: Con
     issues: [{ path: "investmentWindow.lastWeek", message: "must not be after horizonWeeks (6), got 8" }],
   },
   {
+    name: "horizon issue is still reported when firstWeek is missing",
+    input: { ...baselineInput(), investmentWindow: { lastWeek: 8 }, horizonWeeks: 6 },
+    issues: [
+      { path: "investmentWindow.firstWeek", message: "is required" },
+      { path: "investmentWindow.lastWeek", message: "must not be after horizonWeeks (6), got 8" },
+    ],
+  },
+  {
     name: "max investments cannot be funded by initial capital",
     input: { ...baselineInput(), maxInitialInvestments: 6 },
     issues: [
