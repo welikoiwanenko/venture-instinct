@@ -305,3 +305,23 @@ test("a scenario getter does not hide other scenario issues or produce a hash", 
     { path: "scenario.contentVersion", message: "must be a positive integer, got 0" },
   ]);
 });
+
+test("a nested proxy that throws a non-Error while hashing is an issue, not an exception", () => {
+  // Non-plain on the first prototype read, so the snapshot keeps it as is; the second
+  // read (while hashing) throws null, which has no message to read.
+  let reads = 0;
+  const nested = new Proxy(
+    {},
+    {
+      getPrototypeOf() {
+        reads += 1;
+        if (reads > 1) throw null;
+        return Map.prototype;
+      },
+    },
+  );
+  const scenario = { ...fixtureScenario(), content: { nested } };
+  assert.deepEqual(issuesFor({ scenario }), [
+    { path: "scenario", message: "must be plain JSON data: an unreadable value was thrown" },
+  ]);
+});

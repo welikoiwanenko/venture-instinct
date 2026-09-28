@@ -58,7 +58,7 @@ export function withSnapshotIssues<T extends SnapshotIssue>(
 }
 
 /** A description of any thrown value; never throws itself. */
-function describeThrown(error: unknown): string {
+export function describeThrown(error: unknown): string {
   try {
     if (error instanceof Error && typeof error.message === "string") {
       return error.message;

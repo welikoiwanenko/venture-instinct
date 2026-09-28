@@ -15,7 +15,7 @@ on:
 # Every PR comment starts a run of this workflow, even when the job below is skipped.
 # Only authorized review requests share the per-PR group (a newer request supersedes
 # an older one); any other comment gets a group of its own, so it can never cancel a
-# running review. Keep this condition in sync with the job's `if`.
+# running review. Keep this condition in sync with the job's `if` (minus its always()).
 concurrency:
   group: >-
     ${{ (github.event_name == 'workflow_dispatch' ||
@@ -28,11 +28,16 @@ concurrency:
 
 jobs:
   review:
+    # always(): on cancellation GitHub re-evaluates this condition and cancels the whole
+    # job if it is false (a condition without a status function implies success()).
+    # Keeping the job alive lets only its steps be cancelled, so `Report result`
+    # (always()) still records the cancellation. For unrelated comments it stays false.
     if: >-
+      always() && (
       github.event_name == 'workflow_dispatch' ||
       (github.event.issue.pull_request &&
        startsWith(github.event.comment.body, '/gemini-cli review') &&
-       github.event.comment.author_association == 'OWNER')
+       github.event.comment.author_association == 'OWNER'))
     runs-on: ubuntu-latest
     # Step budgets: pending 2 + Gemini 8 + report 2 = 12 < 15, so a timed-out step is
     # always reported before the job deadline cancels the job.

@@ -7,7 +7,7 @@ import {
   type CampaignConfig,
 } from "../config/campaign-config.ts";
 import { createInitialCampaignState, type CampaignState } from "../campaign/initial-state.ts";
-import { isPlainRecord, snapshotPlainData, withSnapshotIssues } from "../data/plain-data.ts";
+import { describeThrown, isPlainRecord, snapshotPlainData, withSnapshotIssues } from "../data/plain-data.ts";
 import { canonicalHash, canonicalJson } from "./canonical-json.ts";
 
 /** Versions owned by the engine code. Bump one whenever its behaviour changes. */
@@ -189,7 +189,7 @@ function checkScenario(
     try {
       contentHash = canonicalHash(value);
     } catch (error) {
-      issues.push({ path: "scenario", message: `must be plain JSON data: ${(error as Error).message}` });
+      issues.push({ path: "scenario", message: `must be plain JSON data: ${describeThrown(error)}` });
     }
   }
 
