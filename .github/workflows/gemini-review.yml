@@ -39,6 +39,9 @@ jobs:
         run: |
           sha=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" -q .head.sha)
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          last=$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/reviews" \
+            -q '.[] | select(.user.login == "github-actions[bot]" and .submitted_at != null) | .id' | sort -n | tail -1)
+          echo "last_review=${last:-0}" >> "$GITHUB_OUTPUT"
           gh api "repos/$GITHUB_REPOSITORY/statuses/$sha" -f state=pending \
             -f context=gemini-review -f description="Gemini review running" -f target_url="$STATUS_URL"
 
@@ -83,12 +86,13 @@ jobs:
             ["https://github.com/gemini-cli-extensions/code-review"]
           prompt: /pr-code-review
 
-      # The action can exit 0 without posting (e.g. turn limit hit), so require an actual review.
+      # The action can exit 0 without posting (e.g. turn limit hit), so require a review
+      # submitted by this run. Cancelled runs (superseded by a newer one) report nothing.
       - name: Report result
-        if: always() && steps.pr.outputs.sha
+        if: ${{ !cancelled() && steps.pr.outputs.sha }}
         run: |
-          posted=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/reviews" \
-            -q "[.[] | select(.user.login == \"github-actions[bot]\" and .commit_id == \"$SHA\")] | length")
+          posted=$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/reviews" \
+            -q ".[] | select(.user.login == \"github-actions[bot]\" and .submitted_at != null and .commit_id == \"$SHA\" and .id > $LAST_REVIEW) | .id" | wc -l)
           if [ "$OUTCOME" = success ] && [ "$posted" -gt 0 ]; then state=success; desc="Gemini review posted"
           else state=failure; desc="Gemini review failed or posted nothing"; fi
           gh api "repos/$GITHUB_REPOSITORY/statuses/${{ steps.pr.outputs.sha }}" -f state=$state \
@@ -96,3 +100,4 @@ jobs:
         env:
           OUTCOME: ${{ steps.gemini.outcome }}
           SHA: ${{ steps.pr.outputs.sha }}
+          LAST_REVIEW: ${{ steps.pr.outputs.last_review }}
