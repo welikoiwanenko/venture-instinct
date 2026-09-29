@@ -6,6 +6,7 @@ import type { CampaignState } from "../campaign/initial-state.ts";
 import { isInvestmentWeek } from "../campaign/week.ts";
 import { POC_BASELINE_CONFIG } from "../config/baseline.ts";
 import type { CampaignConfig } from "../config/campaign-config.ts";
+import type { ScenarioPack } from "../content/scenario-pack.ts";
 import {
   createCampaignManifest,
   type CampaignManifest,
@@ -24,6 +25,8 @@ export interface Campaign {
   readonly config: CampaignConfig;
   readonly state: CampaignState;
   readonly manifest: CampaignManifest;
+  /** The validated scenario pack the manifest's content hash describes, hidden state included. */
+  readonly scenario: ScenarioPack;
 }
 
 export interface InitializeCampaignInput {
@@ -74,7 +77,7 @@ export function initializeCampaign(input: InitializeCampaignInput): InitializeCa
   if (!result.ok) {
     return result;
   }
-  const { manifest } = result;
+  const { manifest, pack } = result;
   return {
     ok: true,
     campaign: Object.freeze({
@@ -82,6 +85,7 @@ export function initializeCampaign(input: InitializeCampaignInput): InitializeCa
       config: manifest.config,
       state: manifest.initialState,
       manifest,
+      scenario: pack,
     }),
   };
 }

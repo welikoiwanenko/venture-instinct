@@ -7,8 +7,8 @@ import {
   type CampaignConfig,
 } from "../config/campaign-config.ts";
 import { createInitialCampaignState, type CampaignState } from "../campaign/initial-state.ts";
-import { validateScenarioPack } from "../content/scenario-pack.ts";
-import { isPlainRecord, snapshotPlainData, withSnapshotIssues } from "../data/plain-data.ts";
+import { validateScenarioPack, type ScenarioPack } from "../content/scenario-pack.ts";
+import { deepFreeze, isPlainRecord, snapshotPlainData, withSnapshotIssues } from "../data/plain-data.ts";
 import { canonicalHash, canonicalJson } from "./canonical-json.ts";
 
 /** Versions owned by the engine code. Bump one whenever its behaviour changes. */
@@ -28,7 +28,8 @@ export interface EngineVersions {
   readonly math: number;
 }
 
-export const ENGINE_VERSIONS: EngineVersions = Object.freeze({ simulation: 1, rng: 1, math: 2 });
+// simulation v2: the initial state lists every company of the pack with its §8.3 dimensions.
+export const ENGINE_VERSIONS: EngineVersions = Object.freeze({ simulation: 2, rng: 1, math: 2 });
 
 export const MANIFEST_FORMAT = 1;
 
@@ -71,7 +72,8 @@ export interface ManifestIssue {
 }
 
 export type ManifestResult =
-  | { readonly ok: true; readonly manifest: CampaignManifest }
+  /** `pack` is the validated, deeply frozen scenario the manifest's content hash describes. */
+  | { readonly ok: true; readonly manifest: CampaignManifest; readonly pack: ScenarioPack }
   | { readonly ok: false; readonly issues: readonly ManifestIssue[] };
 
 const SEED_PATTERN = /^[\x21-\x7e]{1,128}$/;
@@ -101,7 +103,7 @@ export function createCampaignManifest(input: ManifestInput): ManifestResult {
   }
 
   const config = configResult.config;
-  const initialState = createInitialCampaignState(config);
+  const initialState = createInitialCampaignState(config, scenario.pack.content.companies);
   const body = {
     format: MANIFEST_FORMAT,
     seed,
@@ -121,7 +123,7 @@ export function createCampaignManifest(input: ManifestInput): ManifestResult {
   const campaignId = `cmp-${canonicalHash(body).slice("sha256:".length, "sha256:".length + 16)}`;
   // Round-trip through canonical JSON: a fresh, input-independent copy.
   const manifest = JSON.parse(canonicalJson({ ...body, campaignId })) as CampaignManifest;
-  return { ok: true, manifest: deepFreeze(manifest) };
+  return { ok: true, manifest: deepFreeze(manifest), pack: scenario.pack };
 }
 
 export function formatManifestIssue(issue: ManifestIssue): string {
@@ -146,13 +148,14 @@ function readSeed(value: unknown, issues: ManifestIssue[]): string | undefined {
 function readScenario(
   untrusted: unknown,
   issues: ManifestIssue[],
-): { id: string; contentVersion: number; contentHash: string } | undefined {
+): { id: string; contentVersion: number; contentHash: string; pack: ScenarioPack } | undefined {
   const result = validateScenarioPack(untrusted, "scenario");
   if (!result.ok) {
     issues.push(...result.issues);
     return undefined;
   }
-  return { id: result.pack.id, contentVersion: result.pack.contentVersion, contentHash: result.contentHash };
+  const { pack, contentHash } = result;
+  return { id: pack.id, contentVersion: pack.contentVersion, contentHash, pack };
 }
 
 function readEngine(untrusted: unknown, issues: ManifestIssue[]): EngineVersions | undefined {
@@ -208,16 +211,6 @@ function rejectUnknownKeys(
       issues.push({ path: `${parent}.${key}`, message: "is not a known field" });
     }
   }
-}
-
-function deepFreeze<T>(value: T): T {
-  if (typeof value === "object" && value !== null) {
-    for (const child of Object.values(value)) {
-      deepFreeze(child);
-    }
-    Object.freeze(value);
-  }
-  return value;
 }
 
 function describe(value: unknown): string {
