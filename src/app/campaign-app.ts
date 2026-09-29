@@ -18,7 +18,15 @@ import { buildPlayerView, searchPlayerView, type PlayerCompany, type PlayerView 
 // Adapters import only from src/app/, so the helpers they need are re-exported here.
 export { formatManifestIssue, type ManifestIssue } from "../manifest/campaign-manifest.ts";
 export { canonicalJson } from "../manifest/canonical-json.ts";
-export { formatCentsAsUsd } from "./format.ts";
+export {
+  formatBasisPoints,
+  formatCentsAsUsd,
+  formatMetricValue,
+  formatPeriod,
+  formatSource,
+  METRIC_LABELS,
+  STATUS_LABELS,
+} from "./format.ts";
 export type {
   PlayerCompany,
   PlayerCompanyProfile,
@@ -70,6 +78,8 @@ export interface CampaignSummary {
   /** Whole US cents paid for each initial investment. */
   readonly checkSizeCents: number;
   readonly portfolioSize: number;
+  /** Companies the player knows of. Unknown companies are not counted (§9.1). */
+  readonly knownCompanies: number;
   /** Hash of the current domain state; equals manifest.initialStateHash before any command. */
   readonly stateHash: string;
 }
@@ -119,6 +129,7 @@ export function inspectCampaign(campaign: Campaign): CampaignSummary {
     maxInitialInvestments: config.maxInitialInvestments,
     checkSizeCents: config.checkSizeCents,
     portfolioSize: state.portfolio.length,
+    knownCompanies: state.companies.filter((c) => c.knowledge !== "unknown").length,
     stateHash: canonicalHash(state),
   });
 }
