@@ -5,25 +5,28 @@
 import { Box, Text, useApp, useInput, useWindowSize } from "ink";
 import { createElement as h, useState, type ReactElement } from "react";
 
-import { SECTIONS, update, type Pane, type TuiState } from "./model.ts";
+import { inputMode, SECTIONS, update, type Pane, type TuiState } from "./model.ts";
 import { screenKeyIntent } from "./keys.ts";
-import { buildScreen, helpLines, hintBar, NARROW_COLUMNS, wrapLines, type Screen } from "./screen.ts";
+import { buildScreen, helpLines, hintBar, NARROW_COLUMNS, packItems, wrapLines, type Screen, type ScreenContext } from "./screen.ts";
+import { startCampaign, type ScenarioSource } from "./session.ts";
 
 /** How the full-screen session ended; the launcher decides what happens next. */
 export type ScreenExit = { readonly next: "quit" } | { readonly next: "text-mode"; readonly state: TuiState };
 
 export interface AppProps {
   readonly initial: TuiState;
+  readonly source: ScenarioSource;
 }
 
-export function App({ initial }: AppProps): ReactElement {
+export function App({ initial, source }: AppProps): ReactElement {
   const { exit } = useApp();
   const { columns, rows } = useWindowSize();
   const [state, setState] = useState(initial);
-  const layout = layoutFor(columns, rows, state);
+  const context: ScreenContext = { scenarioLabel: source.label };
+  const layout = layoutFor(columns, rows, state, context);
 
   useInput((input, key) => {
-    const intent = screenKeyIntent(input, key, state.focus);
+    const intent = screenKeyIntent(input, key, inputMode(state));
     if (intent === undefined) return;
     switch (intent.type) {
       case "quit":
@@ -32,6 +35,11 @@ export function App({ initial }: AppProps): ReactElement {
       case "text-mode":
         exit({ next: "text-mode", state } satisfies ScreenExit);
         return;
+      case "start": {
+        const result = startCampaign(state.seedDraft, source);
+        setState((s) => update(s, { type: "start-result", result }));
+        return;
+      }
       case "scroll":
         setState((s) => update(s, { type: "scroll", delta: intent.pages ? intent.lines * layout.viewport : intent.lines, max: layout.maxScroll }));
         return;
@@ -40,19 +48,20 @@ export function App({ initial }: AppProps): ReactElement {
     }
   });
 
-  return h(ScreenView, { state, columns, rows });
+  return h(ScreenView, { state, context, columns, rows });
 }
 
 interface ScreenViewProps {
   readonly state: TuiState;
+  readonly context: ScreenContext;
   readonly columns: number;
   readonly rows: number;
 }
 
 /** Stateless frame; also used directly by tests through Ink's renderToString. */
-export function ScreenView({ state, columns, rows }: ScreenViewProps): ReactElement {
-  const screen = buildScreen(state);
-  const layout = layoutFor(columns, rows, state);
+export function ScreenView({ state, context, columns, rows }: ScreenViewProps): ReactElement {
+  const screen = buildScreen(state, context);
+  const layout = layoutFor(columns, rows, state, context);
   const offset = state.helpOpen ? 0 : Math.min(state.scroll[state.section], layout.maxScroll);
   const body = layout.lines.slice(offset, offset + layout.viewport);
   const contentFocused = state.focus === "content" && !state.helpOpen;
@@ -70,8 +79,8 @@ export function ScreenView({ state, columns, rows }: ScreenViewProps): ReactElem
   return h(
     Box,
     { flexDirection: "column", width: columns },
-    h(StatusBar, { screen, narrow: layout.narrow }),
-    h(Text, null, `Decision queue: ${screen.queue}`),
+    h(StatusBar, { screen, narrow: layout.narrow, columns }),
+    ...wrapLines([`Decision queue: ${screen.queue}`], columns).map((line, i) => h(Text, { key: `queue-${i}` }, line)),
     layout.narrow
       ? h(Box, { flexDirection: "column", marginTop: 1 }, h(NavLine, { screen, focus: state.focus }), main)
       : h(
@@ -81,15 +90,30 @@ export function ScreenView({ state, columns, rows }: ScreenViewProps): ReactElem
           h(Box, { borderStyle: "single", borderTop: false, borderBottom: false, borderRight: false }),
           main,
         ),
-    ...hintBar(state.focus, columns).map((line, i) => h(Text, { key: `hint-${i}`, dimColor: true }, line)),
+    ...hintBar(inputMode(state), columns).map((line, i) => h(Text, { key: `hint-${i}`, dimColor: true }, line)),
   );
 }
 
-function StatusBar({ screen, narrow }: { readonly screen: Screen; readonly narrow: boolean }): ReactElement {
-  const fields = screen.status.map((f) => `${f.label}: ${f.value}`);
+const APP_TITLE = "Venture Instinct";
+
+function statusItems(screen: Screen): string[] {
+  return screen.status.map((f) => `${f.label}: ${f.value}`);
+}
+
+/** The one-line wide status bar, without the bold title. */
+function wideStatus(screen: Screen): string {
+  return `  ${statusItems(screen).join(" · ")}`;
+}
+
+function StatusBar({ screen, narrow, columns }: { readonly screen: Screen; readonly narrow: boolean; readonly columns: number }): ReactElement {
   return narrow
-    ? h(Box, { flexDirection: "column" }, h(Text, { bold: true }, "Venture Instinct"), h(Text, { wrap: "wrap" }, fields.join(" · ")))
-    : h(Text, { wrap: "truncate-end" }, h(Text, { bold: true }, "Venture Instinct"), `   ${fields.join("  │  ")}`);
+    ? h(
+        Box,
+        { flexDirection: "column" },
+        h(Text, { bold: true }, APP_TITLE),
+        ...packItems(statusItems(screen), columns).map((line, i) => h(Text, { key: i }, line)),
+      )
+    : h(Text, null, h(Text, { bold: true }, APP_TITLE), wideStatus(screen));
 }
 
 interface NavProps {
@@ -129,19 +153,25 @@ interface Layout {
 }
 
 // Wide layout columns outside the body: outer borders 2, nav padding 2, the widest nav
-// entry ("▸ 3 Companies") 13, separator 1, body padding 2.
+// entry ("▸ 4 Companies") 13, separator 1, body padding 2.
 const WIDE_CHROME_COLUMNS = 20;
 
-function layoutFor(columns: number, rows: number, state: TuiState): Layout {
-  const hints = hintBar(state.focus, columns).length;
-  // Rows outside the body. Wide: status, queue, two borders, title. Compact: title and
-  // status, queue, blank, nav, title. Both: the hint lines.
+function layoutFor(columns: number, rows: number, state: TuiState, context: ScreenContext): Layout {
+  const screen = buildScreen(state, context);
+  const hints = hintBar(inputMode(state), columns).length;
+  // Rows outside the body. Wide: status, queue, two borders, title. Compact: app title,
+  // status lines, queue, blank, nav, title. Both: the hint lines.
   const wideChrome = 5 + hints;
-  // The side navigation needs one row per section beside the title and body, so a short
-  // window gets the compact layout too.
-  const narrow = columns < NARROW_COLUMNS || rows - wideChrome < SECTIONS.length - 1;
-  const source = state.helpOpen ? helpLines() : buildScreen(state).body;
+  // The side navigation needs one row per section beside the title and body, and the
+  // wide status bar must fit on one line; otherwise the compact layout is used.
+  const narrow =
+    columns < NARROW_COLUMNS ||
+    [...APP_TITLE, ...wideStatus(screen)].length > columns ||
+    rows - wideChrome < SECTIONS.length - 1;
+  const source = state.helpOpen ? helpLines() : screen.body;
   const lines = wrapLines(source, narrow ? columns : columns - WIDE_CHROME_COLUMNS);
-  const viewport = Math.max(1, rows - (narrow ? 6 + hints : wideChrome));
+  const queueLines = wrapLines([`Decision queue: ${screen.queue}`], columns).length;
+  const narrowChrome = 4 + queueLines + packItems(statusItems(screen), columns).length + hints;
+  const viewport = Math.max(1, rows - (narrow ? narrowChrome : wideChrome));
   return { narrow, lines, viewport, maxScroll: Math.max(0, lines.length - viewport) };
 }

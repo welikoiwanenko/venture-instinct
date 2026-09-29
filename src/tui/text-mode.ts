@@ -7,7 +7,8 @@ import type { Readable } from "node:stream";
 
 import { update, type TuiState } from "./model.ts";
 import { textCommand } from "./keys.ts";
-import { buildScreen, renderHelp, renderLinear, TEXT_COMMANDS } from "./screen.ts";
+import { buildScreen, renderHelp, renderLinear, TEXT_COMMANDS, type ScreenContext } from "./screen.ts";
+import { startCampaign, type ScenarioSource } from "./session.ts";
 
 export interface TextIo {
   readonly input: Readable;
@@ -15,9 +16,10 @@ export interface TextIo {
 }
 
 /** Resolves when the player quits or input ends. */
-export async function runTextMode(initial: TuiState, io: TextIo): Promise<void> {
+export async function runTextMode(initial: TuiState, io: TextIo, source: ScenarioSource): Promise<void> {
+  const context: ScreenContext = { scenarioLabel: source.label, linear: true };
   let state = initial;
-  io.write(`Venture Instinct, linear text mode. Type help for commands.\n\n${renderLinear(buildScreen(state))}> `);
+  io.write(`Venture Instinct, linear text mode. Type help for commands.\n\n${renderLinear(buildScreen(state, context))}> `);
   const lines = createInterface({ input: io.input, terminal: false });
   for await (const line of lines) {
     const command = textCommand(line);
@@ -34,8 +36,18 @@ export async function runTextMode(initial: TuiState, io: TextIo): Promise<void> 
       io.write(`Commands:\n${renderHelp(TEXT_COMMANDS).join("\n")}\n> `);
       continue;
     }
-    state = update(state, command);
-    io.write(`\n${renderLinear(buildScreen(state))}> `);
+    if (command.type === "start") {
+      if (state.campaign !== undefined) {
+        io.write("A campaign is already running in this session.\n> ");
+        continue;
+      }
+      // Show the Overview, where the start form, its errors or the new campaign appear.
+      state = update(state, { type: "select", section: "overview" });
+      state = update(state, { type: "start-result", result: startCampaign(command.seed, source) });
+    } else {
+      state = update(state, command);
+    }
+    io.write(`\n${renderLinear(buildScreen(state, context))}> `);
   }
   lines.close();
   io.write("\nBye.\n");

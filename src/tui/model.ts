@@ -3,13 +3,17 @@
 // current section's content; the focused one receives ↑/↓. The Ink renderer and the linear text mode
 // share this model, so both reach the same sections in the same way.
 
+import type { Campaign } from "../app/campaign-app.ts";
+import type { StartResult } from "./session.ts";
+
 export const SECTIONS = [
-  { id: "inbox", title: "Inbox", key: "1" },
-  { id: "discovery", title: "Discovery", key: "2" },
-  { id: "companies", title: "Companies", key: "3" },
-  { id: "portfolio", title: "Portfolio", key: "4" },
-  { id: "history", title: "History", key: "5" },
-  { id: "plan", title: "Plan", key: "6" },
+  { id: "overview", title: "Overview", key: "1" },
+  { id: "inbox", title: "Inbox", key: "2" },
+  { id: "discovery", title: "Discovery", key: "3" },
+  { id: "companies", title: "Companies", key: "4" },
+  { id: "portfolio", title: "Portfolio", key: "5" },
+  { id: "history", title: "History", key: "6" },
+  { id: "plan", title: "Plan", key: "7" },
 ] as const;
 
 export type SectionId = (typeof SECTIONS)[number]["id"];
@@ -17,12 +21,23 @@ export type SectionId = (typeof SECTIONS)[number]["id"];
 /** Which pane receives ↑/↓: the section list, or the current section's content. */
 export type Pane = "sections" | "content";
 
+/**
+ * What key presses mean right now: the two panes, or typing into the seed field (the
+ * Overview content before a campaign exists), where printable keys are text.
+ */
+export type InputMode = Pane | "seed";
+
 export interface TuiState {
   readonly section: SectionId;
   readonly focus: Pane;
   /** Reading position per section, kept while the player visits other sections. */
   readonly scroll: Readonly<Record<SectionId, number>>;
   readonly helpOpen: boolean;
+  /** Opaque handle from the application API; screens read it only via inspectCampaign. */
+  readonly campaign: Campaign | undefined;
+  readonly seedDraft: string;
+  /** Why the last start attempt failed; cleared by the next attempt. */
+  readonly startErrors: readonly string[];
 }
 
 export type TuiAction =
@@ -32,6 +47,9 @@ export type TuiAction =
   /** `max` is the last valid offset for the current viewport; the renderer knows it. */
   | { readonly type: "scroll"; readonly delta: number; readonly max: number }
   | { readonly type: "focus"; readonly pane: Pane }
+  | { readonly type: "type-seed"; readonly text: string }
+  | { readonly type: "erase-seed" }
+  | { readonly type: "start-result"; readonly result: StartResult }
   | { readonly type: "toggle-help" };
 
 export function initialTuiState(): TuiState {
@@ -40,7 +58,17 @@ export function initialTuiState(): TuiState {
     focus: "sections",
     scroll: Object.freeze(Object.fromEntries(SECTIONS.map((s) => [s.id, 0])) as Record<SectionId, number>),
     helpOpen: false,
+    campaign: undefined,
+    seedDraft: "",
+    startErrors: Object.freeze([]),
   });
+}
+
+export function inputMode(state: TuiState): InputMode {
+  if (state.focus === "content" && state.section === "overview" && state.campaign === undefined && !state.helpOpen) {
+    return "seed";
+  }
+  return state.focus;
 }
 
 export function update(state: TuiState, action: TuiAction): TuiState {
@@ -67,6 +95,17 @@ export function update(state: TuiState, action: TuiAction): TuiState {
     case "focus":
       if (action.pane === state.focus && !state.helpOpen) return state;
       return Object.freeze({ ...state, focus: action.pane, helpOpen: false });
+    case "type-seed":
+      return state.campaign !== undefined ? state : Object.freeze({ ...state, seedDraft: state.seedDraft + action.text });
+    case "erase-seed":
+      if (state.campaign !== undefined || state.seedDraft === "") return state;
+      return Object.freeze({ ...state, seedDraft: [...state.seedDraft].slice(0, -1).join("") });
+    case "start-result":
+      // PoC 0.1 runs one campaign per session; a failed attempt changes only the errors.
+      if (state.campaign !== undefined) return state;
+      return action.result.ok
+        ? Object.freeze({ ...state, campaign: action.result.campaign, startErrors: Object.freeze([]) })
+        : Object.freeze({ ...state, startErrors: Object.freeze([...action.result.errors]) });
     case "toggle-help":
       return Object.freeze({ ...state, helpOpen: !state.helpOpen });
   }
