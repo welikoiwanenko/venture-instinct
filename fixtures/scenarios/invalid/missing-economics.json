@@ -1,0 +1,41 @@
+{
+  "id": "invalid-missing-economics",
+  "contentVersion": 1,
+  "content": {
+    "purpose": "Invalid on purpose: the profile has no weekly price and no team costs.",
+    "companies": [
+      {
+        "id": "co-fixture-alpha",
+        "name": "Fixture Alpha",
+        "sector": "developer-tools",
+        "businessModel": "b2b-recurring-software",
+        "description": "A placeholder developer-tools company used to test the schema.",
+        "founders": [
+          {
+            "id": "fd-fixture-alpha-1",
+            "name": "Founder One",
+            "specialization": "engineering"
+          }
+        ],
+        "initialKnowledge": "inbound",
+        "hidden": {
+          "cashCents": 10000000,
+          "payingCustomers": 4,
+          "largestCustomerShareBps": 4000,
+          "baseWeeklyLeads": 3,
+          "productFit": 50,
+          "team": [
+            {
+              "specialization": "engineering",
+              "headcount": 2,
+              "productivityBps": 10000
+            }
+          ],
+          "founderAlignmentBps": 10000,
+          "unresolvedConflicts": [],
+          "strategy": "product"
+        }
+      }
+    ]
+  }
+}
