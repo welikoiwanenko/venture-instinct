@@ -68,7 +68,7 @@ interface ScreenViewProps {
 export function ScreenView({ state, context, columns, rows }: ScreenViewProps): ReactElement {
   const screen = buildScreen(state, context);
   const layout = layoutFor(columns, rows, state, context);
-  const offset = state.helpOpen ? 0 : Math.min(state.scroll[state.section], layout.maxScroll);
+  const offset = layout.offset;
   const body = layout.lines.slice(offset, offset + layout.viewport);
   const contentFocused = state.focus === "content" && !state.helpOpen;
   const title = state.helpOpen
@@ -158,6 +158,8 @@ interface Layout {
   readonly lines: readonly string[];
   readonly viewport: number;
   readonly maxScroll: number;
+  /** First visible body line: the scroll position, moved just enough to show the selected company. */
+  readonly offset: number;
 }
 
 // Wide layout columns outside the body: outer borders 2, nav padding 2, the widest nav
@@ -181,5 +183,15 @@ function layoutFor(columns: number, rows: number, state: TuiState, context: Scre
   const queueLines = wrapLines([`Decision queue: ${screen.queue}`], columns).length;
   const narrowChrome = 4 + queueLines + packItems(statusItems(screen), columns).length + hints;
   const viewport = Math.max(1, rows - (narrow ? narrowChrome : wideChrome));
-  return { companyCount: screen.companyCount, narrow, lines, viewport, maxScroll: Math.max(0, lines.length - viewport) };
+  const maxScroll = Math.max(0, lines.length - viewport);
+  let offset = state.helpOpen ? 0 : Math.min(state.scroll[state.section], maxScroll);
+  if (!state.helpOpen && screen.selected !== undefined) {
+    // Positions of the selected entry after wrapping.
+    const width = narrow ? columns : columns - WIDE_CHROME_COLUMNS;
+    const start = wrapLines(source.slice(0, screen.selected.start), width).length;
+    const end = wrapLines(source.slice(0, screen.selected.end), width).length;
+    if (end > offset + viewport) offset = end - viewport;
+    if (start < offset) offset = start;
+  }
+  return { companyCount: screen.companyCount, narrow, lines, viewport, maxScroll, offset };
 }

@@ -260,3 +260,42 @@ test("text mode opens cards by number, expands them and goes back", async () => 
   assert.match(output, /== Companies \(section 4 of 7\) ==\n[\s\S]*2 companies you know[\s\S]*Bye\.\n$/);
   for (const hidden of HIDDEN) assert.ok(!output.includes(hidden), hidden);
 });
+
+test("the selected company stays visible in a small window, also after returning from its card", () => {
+  const { state } = started();
+  const down = update(state, { type: "move-company", delta: 1, count: 2 });
+  const visible = (s: TuiState) => {
+    const out = frame(s, 40, 20);
+    assert.ok(out.split("\n").length <= 20, out);
+    return out;
+  };
+  const afterDown = visible(down);
+  assert.match(afterDown, /▸ 2 {2}Papirflow/, afterDown);
+  assert.doesNotMatch(afterDown, /Tracebench/, "the list scrolled to the selection");
+  const back = update(open(down, 1), { type: "close-company" });
+  assert.equal(back.companyCursor, 1);
+  assert.match(visible(back), /▸ 2 {2}Papirflow/);
+  const up = update(back, { type: "move-company", delta: -1, count: 2 });
+  assert.match(visible(up), /▸ 1 {2}Tracebench/);
+});
+
+test("a falling figure below one percent keeps its minus sign on the card", () => {
+  const { campaign, state } = started();
+  const appended = appendObservation(campaign.state.observations, {
+    observation: {
+      observationId: "obs-test-concentration-week-1",
+      companyId: "co-papirflow",
+      source: { kind: "founder", author: "fd-taras-kovalenko" },
+      receivedWeek: 1,
+      period: { fromWeek: 1, toWeek: 1 },
+      content: { kind: "metric", metric: "largestCustomerShareBps", value: 1750 },
+      references: [],
+    },
+    provenance: { fact: { value: 4700 }, distortion: { reason: "optimistic-founder-claim", note: "still one distributor" } },
+  });
+  assert.ok(appended.ok);
+  const withUpdate = Object.freeze({ ...campaign, state: Object.freeze({ ...campaign.state, observations: appended.log }) });
+  const out = frame(open({ ...state, campaign: withUpdate }, 1), 120, 80);
+  assert.match(out, /Largest customer's share of revenue: 2 figures side by side/);
+  assert.match(out, /Change: -0\.5% from the earlier period to the later\./);
+});

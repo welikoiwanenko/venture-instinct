@@ -49,6 +49,11 @@ export interface Screen {
   readonly body: readonly string[];
   /** Known companies, for the Companies cursor; 0 without a campaign. */
   readonly companyCount: number;
+  /**
+   * Body lines [start, end) of the selected company in the Companies list. The renderer
+   * keeps them in the viewport, whatever the scroll position or window size.
+   */
+  readonly selected?: { readonly start: number; readonly end: number };
 }
 
 /** Below this width the TUI drops the side navigation and uses a single column. */
@@ -220,6 +225,7 @@ export function buildScreen(state: TuiState, context: ScreenContext): Screen {
   const summary = state.campaign === undefined ? undefined : inspectCampaign(state.campaign);
   const view = state.campaign === undefined ? undefined : viewAsPlayer(state.campaign);
   const open = view !== undefined && state.companyOpen ? view.companies[state.companyCursor] : undefined;
+  const list = section.id === "companies" && view !== undefined && open === undefined ? companyList(view, state.companyCursor, context) : undefined;
   return {
     status: statusFields(summary),
     queue: "○ Nothing needs you",
@@ -234,9 +240,10 @@ export function buildScreen(state: TuiState, context: ScreenContext): Screen {
         : section.id === "companies" && view !== undefined
           ? open !== undefined
             ? companyCard(open, state.messagesExpanded, context)
-            : companyList(view, state.companyCursor, context)
+            : (list?.lines ?? [])
           : PLACEHOLDERS[section.id],
     companyCount: view?.companies.length ?? 0,
+    ...(list?.selected === undefined ? {} : { selected: list.selected }),
   };
 }
 
@@ -305,9 +312,13 @@ function companyName(company: PlayerCompany): string {
 }
 
 /** Known companies only: the player view has no unknown ones, so nothing else can be listed or counted. */
-function companyList(view: PlayerView, cursor: number, context: ScreenContext): string[] {
+function companyList(
+  view: PlayerView,
+  cursor: number,
+  context: ScreenContext,
+): { lines: string[]; selected?: { start: number; end: number } } {
   if (view.companies.length === 0) {
-    return ["You do not know any companies yet."];
+    return { lines: ["You do not know any companies yet."] };
   }
   const count = view.companies.length;
   const lines = [
@@ -315,13 +326,16 @@ function companyList(view: PlayerView, cursor: number, context: ScreenContext): 
     context.linear === true ? "Type open and a number to read a card, e.g. open 1." : "Choose one with ↑/↓ and press Enter to open its card.",
     "",
   ];
+  let selected: { start: number; end: number } | undefined;
   view.companies.forEach((company, i) => {
+    const start = lines.length;
     const marker = context.linear !== true && i === cursor ? "▸" : " ";
     const sector = company.profile?.sector ?? "sector unknown";
     lines.push(`${marker} ${i + 1}  ${companyName(company)} · ${sector}`);
     if (company.profile !== undefined) lines.push(`     ${company.profile.description}`);
+    if (i === cursor) selected = { start, end: lines.length };
   });
-  return lines;
+  return selected === undefined ? { lines } : { lines, selected };
 }
 
 /**
