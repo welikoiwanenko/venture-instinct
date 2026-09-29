@@ -43,6 +43,12 @@ export function App({ initial, source }: AppProps): ReactElement {
       case "scroll":
         setState((s) => update(s, { type: "scroll", delta: intent.pages ? intent.lines * layout.viewport : intent.lines, max: layout.maxScroll }));
         return;
+      case "move-company":
+        setState((s) => update(s, { ...intent, count: layout.companyCount }));
+        return;
+      case "open-company":
+        setState((s) => update(s, { type: "open-company", count: layout.companyCount }));
+        return;
       default:
         setState((s) => update(s, intent));
     }
@@ -72,7 +78,8 @@ export function ScreenView({ state, context, columns, rows }: ScreenViewProps): 
   const main = h(
     Box,
     { flexDirection: "column", flexGrow: 1, paddingX: layout.narrow ? 0 : 1 },
-    h(Text, null, h(Text, { bold: true, inverse: contentFocused }, title), h(Text, { dimColor: true }, more)),
+    // One row always: a long card title with the line counter is cut, not wrapped.
+    h(Text, { wrap: "truncate-end" }, h(Text, { bold: true, inverse: contentFocused }, title), h(Text, { dimColor: true }, more)),
     ...body.map((line, i) => h(Text, { key: i }, line === "" ? " " : line)),
   );
 
@@ -146,6 +153,7 @@ function NavLine({ screen, focus }: NavProps): ReactElement {
 }
 
 interface Layout {
+  readonly companyCount: number;
   readonly narrow: boolean;
   readonly lines: readonly string[];
   readonly viewport: number;
@@ -173,5 +181,5 @@ function layoutFor(columns: number, rows: number, state: TuiState, context: Scre
   const queueLines = wrapLines([`Decision queue: ${screen.queue}`], columns).length;
   const narrowChrome = 4 + queueLines + packItems(statusItems(screen), columns).length + hints;
   const viewport = Math.max(1, rows - (narrow ? narrowChrome : wideChrome));
-  return { narrow, lines, viewport, maxScroll: Math.max(0, lines.length - viewport) };
+  return { companyCount: screen.companyCount, narrow, lines, viewport, maxScroll: Math.max(0, lines.length - viewport) };
 }

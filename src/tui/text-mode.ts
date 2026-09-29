@@ -44,6 +44,13 @@ export async function runTextMode(initial: TuiState, io: TextIo, source: Scenari
       // Show the Overview, where the start form, its errors or the new campaign appear.
       state = update(state, { type: "select", section: "overview" });
       state = update(state, { type: "start-result", result: startCampaign(command.seed, source) });
+    } else if (command.type === "open-company") {
+      const count = buildScreen(state, context).companyCount;
+      if (count === 0 || command.index < 0 || command.index >= count) {
+        io.write(`${count === 0 ? "No companies to open yet." : `Choose a company from 1 to ${count}.`}\n> `);
+        continue;
+      }
+      state = update(update(state, { type: "select", section: "companies" }), { type: "open-company", count, index: command.index });
     } else {
       state = update(state, command);
     }

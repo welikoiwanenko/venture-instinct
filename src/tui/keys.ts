@@ -34,31 +34,55 @@ export type Intent =
   | { readonly type: "start"; readonly seed?: string }
   | { readonly type: "toggle-help" }
   | { readonly type: "text-mode" }
-  | { readonly type: "quit" };
+  | { readonly type: "quit" }
+  /** Companies list: move the cursor; the renderer adds the company count. */
+  | { readonly type: "move-company"; readonly delta: number }
+  | { readonly type: "open-company" }
+  | { readonly type: "close-company" }
+  /** Company card: toggle short and full messages. */
+  | { readonly type: "expand" };
 
 /**
  * Keys that work in both panes: 1-7, Tab/Shift+Tab, PgUp/PgDn, ?, t and q. ↑/↓ (j/k)
  * move through the section list or scroll the content, depending on focus; Enter/→
- * (l) opens the content and Esc/← (h) goes back to the section list. In the seed field
+ * (l) opens the content and Esc/← (h) goes back to the section list. In the Companies
+ * list ↑/↓ choose a company and Enter/→ opens its card; on a card ↑/↓ scroll, e
+ * switches short and full messages and Esc/← goes back to the list. In the seed field
  * printable keys are text, so only Tab, Enter, Backspace, Esc/← and Ctrl+C act.
  */
 export function screenKeyIntent(input: string, key: KeyFlags, mode: InputMode): Intent | undefined {
   if (key.tab) return key.shift ? { type: "previous" } : { type: "next" };
   if (mode === "seed") return seedKeyIntent(input, key);
-  const focus = mode;
   if (key.pageDown) return { type: "scroll", lines: 1, pages: true };
   if (key.pageUp) return { type: "scroll", lines: -1, pages: true };
   if (key.ctrl) return undefined;
   const up = key.upArrow || input === "k";
   const down = key.downArrow || input === "j";
-  if (focus === "sections") {
-    if (up) return { type: "previous" };
-    if (down) return { type: "next" };
-    if (key.return || key.rightArrow || input === "l") return { type: "focus", pane: "content" };
-  } else {
-    if (up) return { type: "scroll", lines: -1 };
-    if (down) return { type: "scroll", lines: 1 };
-    if (key.escape || key.leftArrow || input === "h") return { type: "focus", pane: "sections" };
+  const forward = key.return || key.rightArrow || input === "l";
+  const back = key.escape || key.leftArrow || input === "h";
+  switch (mode) {
+    case "sections":
+      if (up) return { type: "previous" };
+      if (down) return { type: "next" };
+      if (forward) return { type: "focus", pane: "content" };
+      break;
+    case "content":
+      if (up) return { type: "scroll", lines: -1 };
+      if (down) return { type: "scroll", lines: 1 };
+      if (back) return { type: "focus", pane: "sections" };
+      break;
+    case "company-list":
+      if (up) return { type: "move-company", delta: -1 };
+      if (down) return { type: "move-company", delta: 1 };
+      if (forward) return { type: "open-company" };
+      if (back) return { type: "focus", pane: "sections" };
+      break;
+    case "company-card":
+      if (up) return { type: "scroll", lines: -1 };
+      if (down) return { type: "scroll", lines: 1 };
+      if (back) return { type: "close-company" };
+      if (input === "e") return { type: "expand" };
+      break;
   }
   if (key.escape || key.return || key.leftArrow || key.rightArrow || key.upArrow || key.downArrow || key.meta) return undefined;
   switch (input) {
@@ -87,8 +111,11 @@ function seedKeyIntent(input: string, key: KeyFlags): Intent | undefined {
 }
 
 export type TextCommand =
-  | Extract<Intent, { type: "select" | "next" | "previous" | "toggle-help" | "quit" }>
-  | { readonly type: "start"; readonly seed: string };
+  | Extract<Intent, { type: "select" | "next" | "previous" | "toggle-help" | "quit" | "close-company" }>
+  | { readonly type: "start"; readonly seed: string }
+  /** `open 2` opens the second known company's card (0-based `index`). */
+  | { readonly type: "open-company"; readonly index: number }
+  | { readonly type: "expand"; readonly expanded: boolean };
 
 /** `undefined` for an empty line; `{ unknown }` when the command is not recognised. */
 export function textCommand(line: string): TextCommand | { readonly unknown: string } | undefined {
@@ -97,7 +124,15 @@ export function textCommand(line: string): TextCommand | { readonly unknown: str
   // The seed keeps its case; it is everything after "start ", validated by the app.
   const start = /^start(?:\s+(.*))?$/i.exec(line.trim());
   if (start !== null) return { type: "start", seed: start[1]?.trim() ?? "" };
+  const open = /^open\s+(\d+)$/.exec(word);
+  if (open !== null) return { type: "open-company", index: Number(open[1]) - 1 };
   switch (word) {
+    case "back":
+      return { type: "close-company" };
+    case "expand":
+      return { type: "expand", expanded: true };
+    case "short":
+      return { type: "expand", expanded: false };
     case "n":
     case "next":
       return { type: "next" };
