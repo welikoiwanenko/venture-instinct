@@ -206,6 +206,8 @@ export function isForbiddenField(key: string): boolean {
 const FORBIDDEN_MESSAGE =
   "is forbidden: a profile sets starting conditions, not a quality score, winner flag, exit or outcome (§3.1, §10.1)";
 
+const MAX_SAFE = BigInt(Number.MAX_SAFE_INTEGER);
+
 const ECONOMICS_HINT = "§10.3 cannot simulate the company without it";
 
 /** Validates one company. `path` names it in issues, e.g. "scenario.content.companies[0]". */
@@ -470,6 +472,32 @@ function readHidden(
         path: childPath(path, "largestCustomerShareBps"),
         message: `the largest of ${payingCustomers} customers has at least ${floor} basis points, got ${largestCustomerShareBps}`,
       });
+    }
+  }
+  // Values derived from several fields (§9.1 true metrics, §10.3 simulation) must stay
+  // exact too, so their sums and products are checked with BigInt before use.
+  if (payingCustomers !== undefined && weeklyPriceCents !== undefined) {
+    const revenue = BigInt(payingCustomers) * BigInt(weeklyPriceCents);
+    if (revenue > MAX_SAFE) {
+      issues.push({
+        path: childPath(path, "weeklyPriceCents"),
+        message: `× ${payingCustomers} paying customers gives weekly revenue of ${revenue} cents, beyond the safe-integer range`,
+      });
+    }
+  }
+  if (team !== undefined) {
+    const people = team.reduce((sum, line) => sum + BigInt(line.headcount), 0n);
+    if (people > MAX_SAFE) {
+      issues.push({ path: childPath(path, "team"), message: `total headcount ${people} is beyond the safe-integer range` });
+    }
+    if (otherWeeklyCostsCents !== undefined) {
+      const costs = team.reduce((sum, line) => sum + BigInt(line.weeklyCostCents), BigInt(otherWeeklyCostsCents));
+      if (costs > MAX_SAFE) {
+        issues.push({
+          path: childPath(path, "team"),
+          message: `weekly costs with otherWeeklyCostsCents total ${costs} cents, beyond the safe-integer range`,
+        });
+      }
     }
   }
   if (team !== undefined && founders !== undefined) {
