@@ -320,8 +320,9 @@ test("a nested proxy that throws a non-Error while hashing is an issue, not an e
       },
     },
   );
-  const scenario = { ...fixtureScenario(), content: { nested } };
+  const scenario = { ...fixtureScenario(), content: { companies: [], nested } };
   assert.deepEqual(issuesFor({ scenario }), [
+    { path: "scenario.content.nested", message: "is not a known field" },
     { path: "scenario", message: "must be plain JSON data: an unreadable value was thrown" },
   ]);
 });

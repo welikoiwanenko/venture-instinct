@@ -7,7 +7,8 @@ import {
   type CampaignConfig,
 } from "../config/campaign-config.ts";
 import { createInitialCampaignState, type CampaignState } from "../campaign/initial-state.ts";
-import { describeThrown, isPlainRecord, snapshotPlainData, withSnapshotIssues } from "../data/plain-data.ts";
+import { validateScenarioPack } from "../content/scenario-pack.ts";
+import { isPlainRecord, snapshotPlainData, withSnapshotIssues } from "../data/plain-data.ts";
 import { canonicalHash, canonicalJson } from "./canonical-json.ts";
 
 /** Versions owned by the engine code. Bump one whenever its behaviour changes. */
@@ -56,7 +57,7 @@ export interface CampaignManifest {
 
 export interface ManifestInput {
   readonly seed: unknown;
-  /** A scenario pack: `{ id, contentVersion, content }`. */
+  /** A scenario pack (src/content/scenario-pack.ts): `{ id, contentVersion, content }`. */
   readonly scenario: unknown;
   readonly config: unknown;
   /** Defaults to ENGINE_VERSIONS; overridable so tests can prove each version is required. */
@@ -74,7 +75,6 @@ export type ManifestResult =
   | { readonly ok: false; readonly issues: readonly ManifestIssue[] };
 
 const SEED_PATTERN = /^[\x21-\x7e]{1,128}$/;
-const SCENARIO_KEYS = ["id", "contentVersion", "content"] as const;
 const ENGINE_KEYS = ["simulation", "rng", "math"] as const;
 
 /**
@@ -147,56 +147,12 @@ function readScenario(
   untrusted: unknown,
   issues: ManifestIssue[],
 ): { id: string; contentVersion: number; contentHash: string } | undefined {
-  if (untrusted === undefined) {
-    issues.push({ path: "scenario", message: "is required" });
+  const result = validateScenarioPack(untrusted, "scenario");
+  if (!result.ok) {
+    issues.push(...result.issues);
     return undefined;
   }
-  const snapshot = snapshotPlainData(untrusted, "scenario");
-  const local: ManifestIssue[] = [];
-  const scenario = checkScenario(snapshot.value, snapshot.issues.length === 0, local);
-  issues.push(...withSnapshotIssues(snapshot.issues, local));
-  return snapshot.issues.length === 0 ? scenario : undefined;
-}
-
-/** Hashes `value` only when `hashable` (a complete snapshot); a partial one is only checked. */
-function checkScenario(
-  value: unknown,
-  hashable: boolean,
-  issues: ManifestIssue[],
-): { id: string; contentVersion: number; contentHash: string } | undefined {
-  if (!isPlainRecord(value)) {
-    issues.push({ path: "scenario", message: `must be an object, got ${describe(value)}` });
-    return undefined;
-  }
-  rejectUnknownKeys(value, SCENARIO_KEYS, "scenario", issues);
-
-  const id = value["id"];
-  if (id === undefined) {
-    issues.push({ path: "scenario.id", message: "is required" });
-  } else if (typeof id !== "string" || id.trim() === "" || id !== id.trim()) {
-    issues.push({
-      path: "scenario.id",
-      message: `must be a non-empty string without surrounding spaces, got ${describe(id)}`,
-    });
-  }
-  const contentVersion = readVersion(value, "contentVersion", "scenario", issues);
-  if (value["content"] === undefined) {
-    issues.push({ path: "scenario.content", message: "is required" });
-  }
-
-  let contentHash: string | undefined;
-  if (hashable) {
-    try {
-      contentHash = canonicalHash(value);
-    } catch (error) {
-      issues.push({ path: "scenario", message: `must be plain JSON data: ${describeThrown(error)}` });
-    }
-  }
-
-  if (issues.length > 0 || typeof id !== "string" || contentVersion === undefined || contentHash === undefined) {
-    return undefined;
-  }
-  return { id, contentVersion, contentHash };
+  return { id: result.pack.id, contentVersion: result.pack.contentVersion, contentHash: result.contentHash };
 }
 
 function readEngine(untrusted: unknown, issues: ManifestIssue[]): EngineVersions | undefined {
