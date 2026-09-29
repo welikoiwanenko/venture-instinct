@@ -17,8 +17,8 @@ import { runTextMode } from "./text-mode.ts";
 
 export const USAGE = "usage: tui [--text] [--scenario <file.json>]";
 
-/** The same fixture the VI-10 command documents, resolved from the repository root. */
-const BASELINE_SCENARIO = fileURLToPath(new URL("../../fixtures/scenarios/technical-empty.json", import.meta.url));
+/** The Gamma pack the VI-18 command documents, resolved from the repository root. */
+const BASELINE_SCENARIO = fileURLToPath(new URL("../../content/scenarios/gamma-three-companies.json", import.meta.url));
 
 export async function main(argv: readonly string[]): Promise<number> {
   let text: boolean;
