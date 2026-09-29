@@ -8,7 +8,7 @@ import { renderToString } from "ink";
 import { createElement } from "react";
 
 import { ScreenView } from "../src/tui/ink-app.ts";
-import { screenKeyIntent, textCommand } from "../src/tui/keys.ts";
+import { screenKeyIntent, textCommand, type KeyFlags } from "../src/tui/keys.ts";
 import { findSection, initialTuiState, SECTIONS, update, type TuiState } from "../src/tui/model.ts";
 import { buildScreen, renderLinear } from "../src/tui/screen.ts";
 import { runTextMode } from "../src/tui/text-mode.ts";
@@ -58,21 +58,74 @@ test("help keeps the reading position and closes on navigation", () => {
   assert.equal(update(moved, { type: "previous" }).scroll.inbox, 2);
 });
 
-test("key bindings", () => {
-  assert.deepEqual(screenKeyIntent("3", {}), { type: "select", section: "companies" });
-  assert.deepEqual(screenKeyIntent("", { tab: true }), { type: "next" });
-  assert.deepEqual(screenKeyIntent("", { tab: true, shift: true }), { type: "previous" });
-  assert.deepEqual(screenKeyIntent("", { rightArrow: true }), { type: "next" });
-  assert.deepEqual(screenKeyIntent("", { leftArrow: true }), { type: "previous" });
-  assert.deepEqual(screenKeyIntent("j", {}), { type: "scroll", lines: 1 });
-  assert.deepEqual(screenKeyIntent("", { pageUp: true }), { type: "scroll", lines: -1, pages: true });
-  assert.deepEqual(screenKeyIntent("?", {}), { type: "toggle-help" });
-  assert.deepEqual(screenKeyIntent("t", {}), { type: "text-mode" });
-  assert.deepEqual(screenKeyIntent("q", {}), { type: "quit" });
-  assert.deepEqual(screenKeyIntent("", { escape: true }), { type: "quit" });
-  assert.equal(screenKeyIntent("9", {}), undefined);
-  assert.equal(screenKeyIntent("q", { ctrl: true }), undefined);
+test("↑/↓ move through sections in the section list and scroll in the content", () => {
+  const list = (input: string, key: KeyFlags = {}) => screenKeyIntent(input, key, "sections");
+  const content = (input: string, key: KeyFlags = {}) => screenKeyIntent(input, key, "content");
 
+  assert.deepEqual(list("", { downArrow: true }), { type: "next" });
+  assert.deepEqual(list("", { upArrow: true }), { type: "previous" });
+  assert.deepEqual(list("j"), { type: "next" });
+  assert.deepEqual(list("k"), { type: "previous" });
+  for (const [input, key] of [["", { return: true }], ["", { rightArrow: true }], ["l", {}]] as const) {
+    assert.deepEqual(list(input, key), { type: "focus", pane: "content" });
+  }
+  assert.equal(list("", { escape: true }), undefined, "Esc in the section list does not quit");
+  assert.equal(list("", { leftArrow: true }), undefined);
+
+  assert.deepEqual(content("", { downArrow: true }), { type: "scroll", lines: 1 });
+  assert.deepEqual(content("k"), { type: "scroll", lines: -1 });
+  for (const [input, key] of [["", { escape: true }], ["", { leftArrow: true }], ["h", {}]] as const) {
+    assert.deepEqual(content(input, key), { type: "focus", pane: "sections" });
+  }
+  assert.equal(content("", { return: true }), undefined);
+  assert.equal(content("", { rightArrow: true }), undefined);
+
+  for (const pane of ["sections", "content"] as const) {
+    const any = (input: string, key: KeyFlags = {}) => screenKeyIntent(input, key, pane);
+    assert.deepEqual(any("3"), { type: "select", section: "companies" });
+    assert.deepEqual(any("", { tab: true }), { type: "next" });
+    assert.deepEqual(any("", { tab: true, shift: true }), { type: "previous" });
+    assert.deepEqual(any("", { pageDown: true }), { type: "scroll", lines: 1, pages: true });
+    assert.deepEqual(any("?"), { type: "toggle-help" });
+    assert.deepEqual(any("t"), { type: "text-mode" });
+    assert.deepEqual(any("q"), { type: "quit" });
+    assert.equal(any("9"), undefined);
+    assert.equal(any("q", { ctrl: true }), undefined);
+  }
+});
+
+test("focus moves between panes and survives section changes", () => {
+  let state = initialTuiState();
+  assert.equal(state.focus, "sections");
+  state = update(state, { type: "focus", pane: "content" });
+  assert.equal(update(state, { type: "focus", pane: "content" }), state);
+  state = update(state, { type: "select", section: "history" });
+  assert.equal(state.focus, "content", "jumping with 1-6 or Tab keeps the focused pane");
+  const help = update(state, { type: "toggle-help" });
+  assert.equal(update(help, { type: "focus", pane: "sections" }).helpOpen, false, "changing focus closes help");
+});
+
+test("the focused pane is marked with text, not only colour", () => {
+  const list = frame(initialTuiState(), 100);
+  assert.match(list, /\[Section list\] · ↑↓ j\/k section · Enter\/→ open/);
+  assert.match(list, /│ Inbox \(1 of 6\)/, "no ▸ on the content title while the list has focus");
+  const content = frame(update(initialTuiState(), { type: "focus", pane: "content" }), 100);
+  assert.match(content, /\[Content\] · ↑↓ j\/k scroll · Esc\/← back/);
+  assert.match(content, /▸ Inbox \(1 of 6\)/);
+  assert.match(content, /▸ 1 Inbox/, "the current section stays marked in the list");
+  const narrow = frame(update(initialTuiState(), { type: "focus", pane: "content" }), 40);
+  assert.match(narrow, /\[Content\]/);
+  assertFits(narrow, 40);
+});
+
+test("help lists every key grouped by pane", () => {
+  const out = frame(update(initialTuiState(), { type: "toggle-help" }), 100, 30);
+  for (const text of ["In the section list:", "In the content:", "Anywhere:", "open the section's content", "back to the section list", "scroll the content a page"]) {
+    assert.ok(out.includes(text), `missing ${text}\n${out}`);
+  }
+});
+
+test("text mode commands", () => {
   assert.deepEqual(textCommand(" Portfolio "), { type: "select", section: "portfolio" });
   assert.deepEqual(textCommand("n"), { type: "next" });
   assert.deepEqual(textCommand("help"), { type: "toggle-help" });

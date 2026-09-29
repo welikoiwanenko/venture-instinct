@@ -1,7 +1,7 @@
 // Maps raw input to intents, separately from any renderer so bindings are testable.
 // Screen mode reads single key presses; text mode reads whole command lines.
 
-import { findSection, type SectionId } from "./model.ts";
+import { findSection, type Pane, type SectionId } from "./model.ts";
 
 /** The subset of Ink's `Key` the bindings read. */
 export interface KeyFlags {
@@ -12,6 +12,7 @@ export interface KeyFlags {
   readonly pageUp?: boolean;
   readonly pageDown?: boolean;
   readonly tab?: boolean;
+  readonly return?: boolean;
   readonly shift?: boolean;
   readonly escape?: boolean;
   readonly ctrl?: boolean;
@@ -23,29 +24,34 @@ export type Intent =
   | { readonly type: "previous" }
   /** Lines, or pages when `pages` is set; the renderer converts pages to lines. */
   | { readonly type: "scroll"; readonly lines: number; readonly pages?: boolean }
+  | { readonly type: "focus"; readonly pane: Pane }
   | { readonly type: "toggle-help" }
   | { readonly type: "text-mode" }
   | { readonly type: "quit" };
 
-export function screenKeyIntent(input: string, key: KeyFlags): Intent | undefined {
+/**
+ * Keys that work in both panes: 1-6, Tab/Shift+Tab, PgUp/PgDn, ?, t and q. ↑/↓ (j/k)
+ * move through the section list or scroll the content, depending on focus; Enter/→
+ * (l) opens the content and Esc/← (h) goes back to the section list.
+ */
+export function screenKeyIntent(input: string, key: KeyFlags, focus: Pane): Intent | undefined {
   if (key.tab) return key.shift ? { type: "previous" } : { type: "next" };
-  if (key.rightArrow) return { type: "next" };
-  if (key.leftArrow) return { type: "previous" };
-  if (key.downArrow) return { type: "scroll", lines: 1 };
-  if (key.upArrow) return { type: "scroll", lines: -1 };
   if (key.pageDown) return { type: "scroll", lines: 1, pages: true };
   if (key.pageUp) return { type: "scroll", lines: -1, pages: true };
-  if (key.escape) return { type: "quit" };
   if (key.ctrl) return undefined;
+  const up = key.upArrow || input === "k";
+  const down = key.downArrow || input === "j";
+  if (focus === "sections") {
+    if (up) return { type: "previous" };
+    if (down) return { type: "next" };
+    if (key.return || key.rightArrow || input === "l") return { type: "focus", pane: "content" };
+  } else {
+    if (up) return { type: "scroll", lines: -1 };
+    if (down) return { type: "scroll", lines: 1 };
+    if (key.escape || key.leftArrow || input === "h") return { type: "focus", pane: "sections" };
+  }
+  if (key.escape || key.return || key.leftArrow || key.rightArrow || key.upArrow || key.downArrow) return undefined;
   switch (input) {
-    case "l":
-      return { type: "next" };
-    case "h":
-      return { type: "previous" };
-    case "j":
-      return { type: "scroll", lines: 1 };
-    case "k":
-      return { type: "scroll", lines: -1 };
     case "?":
       return { type: "toggle-help" };
     case "t":
@@ -57,7 +63,7 @@ export function screenKeyIntent(input: string, key: KeyFlags): Intent | undefine
   return section === undefined ? undefined : { type: "select", section };
 }
 
-export type TextCommand = Exclude<Intent, { type: "scroll" } | { type: "text-mode" }>;
+export type TextCommand = Exclude<Intent, { type: "scroll" } | { type: "focus" } | { type: "text-mode" }>;
 
 /** `undefined` for an empty line; `{ unknown }` when the command is not recognised. */
 export function textCommand(line: string): TextCommand | { readonly unknown: string } | undefined {

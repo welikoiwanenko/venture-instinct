@@ -18,11 +18,11 @@ npm test           # node:test runner over test/
 ### Terminal UI
 
 ```bash
-npm run tui              # full-screen TUI; q, Esc or Ctrl+C quits
+npm run tui              # full-screen TUI; q or Ctrl+C quits
 npm run tui -- --text    # linear text mode for screen readers and pipes
 ```
 
-Keys are shown on screen: `1`–`6` jump to a section, `Tab`/`→` and `Shift+Tab`/`←` cycle, `↑`/`↓` (or `j`/`k`) and `PgUp`/`PgDn` scroll, `?` lists every key, `t` switches to text mode in place. Each section keeps its scroll position. Below 72 columns, or in a short window, the side navigation collapses into one line. Text mode prints plain, append-only text and reads one command per line (`3`, `companies`, `next`, `help`, `quit`). It also starts automatically when stdin or stdout is not a terminal.
+The screen has two panes: the section list and the current section's content. The focused pane is named at the start of the hint bar (`[Section list]` or `[Content]`) and its keys are listed there; `?` shows every key. In the section list, `↑`/`↓` (or `j`/`k`) move between sections and `Enter`/`→` opens the content. In the content, `↑`/`↓` scroll and `Esc`/`←` go back. Anywhere, `1`–`6` jump to a section, `Tab`/`Shift+Tab` cycle, `PgUp`/`PgDn` scroll a page and `t` switches to text mode in place. Each section keeps its scroll position. Below 72 columns, or in a short window, the side navigation collapses into one line. Text mode prints plain, append-only text and reads one command per line (`3`, `companies`, `next`, `help`, `quit`). It also starts automatically when stdin or stdout is not a terminal.
 
 **Library: [Ink](https://github.com/vadimdemedes/ink) 7 with React 19** (pinned in `package.json`). It is actively maintained, lays out with Flexbox (so the narrow layout is a style change, not a second renderer), handles resize, wide characters and the alternate screen, and `renderToString` lets tests check real frames without a terminal. blessed and neo-blessed are unmaintained; terminal-kit is imperative and harder to test. Node's type stripping has no JSX, so components use `React.createElement`.
 

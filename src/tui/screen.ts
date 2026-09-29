@@ -2,7 +2,7 @@
 // the linear text mode) draw this model, so their content never drifts apart. Statuses
 // always carry a text label and a symbol; colour is decoration only.
 
-import { SECTIONS, sectionIndex, type SectionId, type TuiState } from "./model.ts";
+import { SECTIONS, sectionIndex, type Pane, type SectionId, type TuiState } from "./model.ts";
 
 export interface StatusField {
   readonly label: string;
@@ -37,24 +37,58 @@ export interface Screen {
 /** Below this width the TUI drops the side navigation and uses a single column. */
 export const NARROW_COLUMNS = 72;
 
-export const SCREEN_KEYS: readonly KeyHint[] = [
-  { keys: "1-6", action: "go to section", short: "section" },
-  { keys: "Tab/→", action: "next section", short: "next" },
-  { keys: "S-Tab/←", action: "previous section", short: "prev" },
-  { keys: "↑↓ j/k", action: "scroll", short: "scroll" },
-  { keys: "PgUp/PgDn", action: "scroll a page" },
+const ANYWHERE_KEYS: readonly KeyHint[] = [
+  { keys: "1-6", action: "go to section", short: "jump" },
+  { keys: "Tab", action: "next section" },
+  { keys: "S-Tab", action: "previous section" },
   { keys: "?", action: "help", short: "help" },
   { keys: "t", action: "linear text mode", short: "text mode" },
   { keys: "q", action: "quit", short: "quit" },
 ];
 
+const SECTION_LIST_KEYS: readonly KeyHint[] = [
+  { keys: "↑↓ j/k", action: "previous / next section", short: "section" },
+  { keys: "Enter/→", action: "open the section's content", short: "open" },
+];
+
+const CONTENT_KEYS: readonly KeyHint[] = [
+  { keys: "↑↓ j/k", action: "scroll", short: "scroll" },
+  { keys: "Esc/←", action: "back to the section list", short: "back" },
+];
+
+const PAGE_KEY: KeyHint = { keys: "PgUp/PgDn", action: "scroll the content a page" };
+
+/** Keys per focused pane; the hint bar shows the focused pane's keys. */
+export const PANE_KEYS: Readonly<Record<Pane, readonly KeyHint[]>> = {
+  sections: [...SECTION_LIST_KEYS, ...ANYWHERE_KEYS],
+  content: [...CONTENT_KEYS, ...ANYWHERE_KEYS],
+};
+
+const PANE_LABELS: Readonly<Record<Pane, string>> = { sections: "Section list", content: "Content" };
+
+/** Help screen: every key, grouped by where it works. */
+export function helpLines(): string[] {
+  const groups: Array<[string, readonly KeyHint[]]> = [
+    ["In the section list", SECTION_LIST_KEYS],
+    ["In the content", CONTENT_KEYS],
+    ["Anywhere", [PAGE_KEY, ...ANYWHERE_KEYS]],
+  ];
+  const width = Math.max(...groups.flatMap(([, hints]) => hints.map((h) => h.keys.length)));
+  return groups.flatMap(([heading, hints], i) => [...(i === 0 ? [] : [""]), `${heading}:`, ...renderHelp(hints, width)]);
+}
+
 /**
- * The always-visible hints, packed into as few lines of `width` as possible without
- * splitting a hint. Keys without a `short` label are listed only in help.
+ * The always-visible hints for the focused pane, led by the pane's name, packed into
+ * as few lines of `width` as possible without splitting a hint. Keys without a `short`
+ * label are listed only in help.
  */
-export function hintBar(hints: readonly KeyHint[], width: number): string[] {
+export function hintBar(focus: Pane, width: number): string[] {
+  const items = [
+    `[${PANE_LABELS[focus]}]`,
+    ...PANE_KEYS[focus].flatMap((h) => (h.short === undefined ? [] : [`${h.keys} ${h.short}`])),
+  ];
   const lines: string[] = [];
-  for (const item of hints.flatMap((h) => (h.short === undefined ? [] : [`${h.keys} ${h.short}`]))) {
+  for (const item of items) {
     const last = lines.at(-1);
     if (last !== undefined && [...last].length + 3 + [...item].length <= width) {
       lines[lines.length - 1] = `${last} · ${item}`;
@@ -144,8 +178,7 @@ export function renderLinear(screen: Screen): string {
   return `${lines.join("\n")}\n`;
 }
 
-export function renderHelp(hints: readonly KeyHint[]): string[] {
-  const width = Math.max(...hints.map((h) => h.keys.length));
+export function renderHelp(hints: readonly KeyHint[], width = Math.max(...hints.map((h) => h.keys.length))): string[] {
   return hints.map((h) => `${h.keys.padEnd(width)}  ${h.action}`);
 }
 
