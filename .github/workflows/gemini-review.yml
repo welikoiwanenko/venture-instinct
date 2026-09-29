@@ -82,7 +82,11 @@ jobs:
             properties) and relative imports use the .ts extension. Exception:
             src/cli/** is a developer adapter and may read files, parse arguments and
             write to stdout/stderr; it must not duplicate domain rules and imports only
-            from src/app/. src/main.ts prints one runtime line when run directly.
+            from src/app/. src/tui/** is the terminal UI adapter (Ink + React, written
+            with React.createElement since there is no JSX); it may use the terminal and
+            the ink/react packages, but it holds no game rules and imports only from
+            src/app/ and src/tui/ (test/tui-boundary.test.ts enforces this).
+            src/main.ts prints one runtime line when run directly.
             docs/ is a Ukrainian design document: flag only internal contradictions,
             not style.
         with:

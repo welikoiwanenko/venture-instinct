@@ -9,11 +9,17 @@
   "scripts": {
     "start": "node src/main.ts",
     "campaign": "node src/cli/campaign-init.ts",
+    "tui": "node src/tui/main.ts",
     "typecheck": "tsc",
     "test": "node --test"
   },
   "devDependencies": {
     "@types/node": "24.19.0",
+    "@types/react": "19.3.0",
     "typescript": "7.0.2"
+  },
+  "dependencies": {
+    "ink": "7.1.1",
+    "react": "19.3.0"
   }
 }
