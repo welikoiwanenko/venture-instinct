@@ -104,6 +104,7 @@ test("CLI prints the summary and manifest; repeated runs are identical", () => {
   assert.match(first.stdout, /^Capital {4}\$1,000,000 available$/m);
   assert.match(first.stdout, /^Invested {3}0 of 5 initial checks of \$200,000$/m);
   assert.match(first.stdout, /^Portfolio {2}empty$/m);
+  assert.match(first.stdout, /^Companies {2}0 known$/m);
   assert.match(first.stdout, /^Manifest:\n\{/m);
   assert.equal(runCli(["--seed", "demo-1", "--scenario", SCENARIO_PATH]).stdout, first.stdout);
 });
@@ -163,5 +164,6 @@ test("cents are shown as US dollars independently of locale", () => {
 test("the CLI imports only the application layer", () => {
   const source = readFileSync(new URL("../src/cli/campaign-init.ts", import.meta.url), "utf8");
   const local = [...source.matchAll(/from "(\.[^"]*)"/g)].map((match) => match[1]);
-  assert.deepEqual(local, ["../app/campaign-app.ts"]);
+  // The developer CLI may use the debug API; player-facing adapters may not.
+  assert.deepEqual(local, ["../app/campaign-app.ts", "../app/debug.ts"]);
 });
