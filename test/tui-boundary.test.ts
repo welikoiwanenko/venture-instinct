@@ -13,11 +13,13 @@ const TUI_DIR = join(ROOT, "src", "tui");
 const APP_DIR = join(ROOT, "src", "app");
 const ALLOWED_PACKAGES = new Set(["ink", "react"]);
 
-const IMPORT_PATTERN = /(?:\bfrom\s*|\bimport\s*\(\s*|\bimport\s+)["']([^"']+)["']/g;
+// Whitespace and comments may sit between the keyword and the specifier.
+const GAP = String.raw`(?:\s|/\*[\s\S]*?\*/|//[^\n]*\n)*`;
+const IMPORT_PATTERN = new RegExp(String.raw`(?:\bfrom${GAP}|\bimport${GAP}\(${GAP}|\bimport${GAP})(["'\`])([^"'\`]+)\1`, "g");
 
 export function forbiddenImports(file: string, source: string): string[] {
   const problems: string[] = [];
-  for (const [, specifier] of source.matchAll(IMPORT_PATTERN)) {
+  for (const [, , specifier] of source.matchAll(IMPORT_PATTERN)) {
     if (specifier === undefined || specifier.startsWith("node:")) continue;
     if (!specifier.startsWith(".")) {
       if (!ALLOWED_PACKAGES.has(specifier.split("/")[0] ?? "")) problems.push(`${specifier} (package not allowed)`);
@@ -54,6 +56,10 @@ test("the boundary check rejects domain internals, hidden state and other adapte
     `export { z } from "../manifest/canonical-json.ts";`,
     `const w = await import("../cli/campaign-init.ts");`,
     `import "../data/plain-data.ts";`,
+    `const a = await import(/* webpackChunkName: "x" */ "../campaign/week.ts");`,
+    `const b = await import(\n  // lazy\n  '../campaign/slots.ts'\n);`,
+    "const c = await import(`../campaign/money.ts`);",
+    `import { d } from /* note */ "../config/campaign-config.ts";`,
     `import chalk from "chalk";`,
     `import { ok } from "../app/campaign-app.ts";`,
     `import { Box } from "ink";`,
@@ -66,6 +72,10 @@ test("the boundary check rejects domain internals, hidden state and other adapte
     "../manifest/canonical-json.ts (resolves to src/manifest/canonical-json.ts)",
     "../cli/campaign-init.ts (resolves to src/cli/campaign-init.ts)",
     "../data/plain-data.ts (resolves to src/data/plain-data.ts)",
+    "../campaign/week.ts (resolves to src/campaign/week.ts)",
+    "../campaign/slots.ts (resolves to src/campaign/slots.ts)",
+    "../campaign/money.ts (resolves to src/campaign/money.ts)",
+    "../config/campaign-config.ts (resolves to src/config/campaign-config.ts)",
     "chalk (package not allowed)",
   ]);
 });
