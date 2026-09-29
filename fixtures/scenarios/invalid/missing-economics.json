@@ -18,6 +18,22 @@
           }
         ],
         "initialKnowledge": "inbound",
+        "application": {
+          "receivedWeek": 1,
+          "authorId": "fd-fixture-alpha-1",
+          "summary": "Placeholder application summary.",
+          "text": "Placeholder application text used to test the schema.",
+          "claims": [
+            {
+              "metric": "payingCustomers",
+              "value": 4,
+              "period": {
+                "fromWeek": 0,
+                "toWeek": 0
+              }
+            }
+          ]
+        },
         "hidden": {
           "cashCents": 10000000,
           "payingCustomers": 4,
