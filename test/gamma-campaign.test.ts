@@ -7,7 +7,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 
-import { canonicalJson, initializeCampaign, inspectCampaign, viewAsPlayer, type Campaign } from "../src/app/campaign-app.ts";
+import { canonicalJson, formatBasisPoints, initializeCampaign, inspectCampaign, viewAsPlayer, type Campaign } from "../src/app/campaign-app.ts";
 import { viewForDebug } from "../src/app/debug.ts";
 import { runCampaignInit } from "../src/cli/campaign-init.ts";
 
@@ -146,4 +146,31 @@ test("an unknown --view is a usage error", () => {
   const run = cli(["--seed", "demo-1", "--scenario", PACK_PATH, "--view", "world"]);
   assert.equal(run.code, 2);
   assert.match(run.stderr, /--view must be one of summary, player, debug, got "world"/);
+});
+
+test("an inbound company with the longest allowed id still delivers its application", () => {
+  const longest = pack();
+  const id = `co-${"x".repeat(61)}`;
+  assert.equal(id.length, 64);
+  longest["content"]["companies"][1]["id"] = id;
+  const { state } = campaign("demo-1", longest);
+  const ids = state.observations.observations.filter((o) => o.companyId === id).map((o) => o.observationId);
+  assert.equal(ids.length, 5);
+  assert.ok(ids.includes(`obs-${id}-application-largest-customer-share-bps`));
+  assert.equal(Math.max(...ids.map((i) => i.length)), 107);
+});
+
+test("basis points keep their sign, including changes below one percent", () => {
+  const table: Array<[number, string]> = [
+    [0, "0%"],
+    [2600, "26%"],
+    [1250, "12.5%"],
+    [1205, "12.05%"],
+    [-1, "-0.01%"],
+    [-50, "-0.5%"],
+    [-99, "-0.99%"],
+    [-2600, "-26%"],
+    [-1250, "-12.5%"],
+  ];
+  for (const [bps, text] of table) assert.equal(formatBasisPoints(bps), text, String(bps));
 });

@@ -39,11 +39,13 @@ export const STATUS_LABELS: Readonly<Record<VerificationStatus, string>> = {
   "stale-period": "⌛ stale period",
 };
 
-/** `2600` → `26%`, `1250` → `12.5%`. */
+/** `2600` → `26%`, `1250` → `12.5%`, `-50` → `-0.5%`. */
 export function formatBasisPoints(bps: number): string {
-  const whole = Math.trunc(bps / 100);
-  const rest = Math.abs(bps % 100);
-  return `${whole}${rest === 0 ? "" : `.${String(rest).padStart(2, "0").replace(/0$/, "")}`}%`;
+  // The sign is written separately: -50 is -0.5%, and Math.trunc(-0.5) is -0, which prints as "0".
+  const absolute = Math.abs(bps);
+  const whole = Math.trunc(absolute / 100);
+  const rest = absolute % 100;
+  return `${bps < 0 ? "-" : ""}${whole}${rest === 0 ? "" : `.${String(rest).padStart(2, "0").replace(/0$/, "")}`}%`;
 }
 
 export function formatMetricValue(metric: Metric, value: number): string {
