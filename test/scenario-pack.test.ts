@@ -378,3 +378,22 @@ test("application claims name a period, come from a founder and explain every ga
   );
   assert.ok(explained.ok, explained.ok ? "" : JSON.stringify(explained.issues));
 });
+
+test("derived revenue, costs and headcount must stay within the safe-integer range", () => {
+  const max = Number.MAX_SAFE_INTEGER;
+  const revenue = issuesOf(edit((c) => (c["hidden"]["weeklyPriceCents"] = max)));
+  assert.deepEqual(revenue.map((i) => i.path), [`${COMPANY}.hidden.weeklyPriceCents`]);
+  assert.match(revenue[0]?.message ?? "", /× 4 paying customers gives weekly revenue of 36028797018963964 cents, beyond the safe-integer range/);
+
+  const costs = issuesOf(edit((c) => (c["hidden"]["otherWeeklyCostsCents"] = max)));
+  assert.deepEqual(costs, [
+    { path: `${COMPANY}.hidden.team`, message: `weekly costs with otherWeeklyCostsCents total ${BigInt(max) + 600000n} cents, beyond the safe-integer range` },
+  ]);
+
+  const people = issuesOf(
+    edit((c) => {
+      c["hidden"]["team"].push({ specialization: "sales", headcount: max, weeklyCostCents: 0, productivityBps: 10000 });
+    }),
+  );
+  assert.deepEqual(people, [{ path: `${COMPANY}.hidden.team`, message: `total headcount ${BigInt(max) + 2n} is beyond the safe-integer range` }]);
+});
