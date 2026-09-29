@@ -1,0 +1,148 @@
+{
+  "id": "poc-gamma-three-companies",
+  "contentVersion": 1,
+  "content": {
+    "purpose": "Gamma baseline: three companies, one per sector. Two apply in the week 1 inbound wave; one exists in the world but is not known to the player.",
+    "companies": [
+      {
+        "id": "co-tracebench",
+        "name": "Tracebench",
+        "sector": "developer-tools",
+        "businessModel": "b2b-recurring-software",
+        "description": "Інструмент для інженерних команд, який виявляє нестабільні тести в CI та показує, як вони затримують релізи.",
+        "founders": [
+          { "id": "fd-ostap-hnatiuk", "name": "Остап Гнатюк", "specialization": "engineering" },
+          { "id": "fd-iryna-melnyk", "name": "Ірина Мельник", "specialization": "engineering" }
+        ],
+        "initialKnowledge": "inbound",
+        "application": {
+          "receivedWeek": 1,
+          "authorId": "fd-ostap-hnatiuk",
+          "summary": "Пошук нестабільних тестів у CI: 19 платних команд, $1 260 виручки на тиждень, команда з чотирьох інженерів.",
+          "text": "Tracebench знаходить нестабільні тести в CI і показує, які з них справді блокують реліз. Ми — двоє інженерів, які п'ять років підтримували збірки великого e-commerce проєкту й утомилися перезапускати пайплайни навмання. Продукт підключається до GitHub Actions і GitLab CI за десять хвилин, без змін у коді. Зараз Tracebench користуються 19 платних команд, тижнева виручка — $1 260. Нас четверо, і всі пишуть код. Нашу open-source утиліту для аналізу логів використовують понад дві тисячі розробників, і більшість нових клієнтів приходить саме звідти. Далі хочемо зробити інтеграції з Jenkins і Buildkite та вийти на компанії з сотнями інженерів. Шукаємо інвестора, який розуміє інструменти для розробників і допоможе з першими великими продажами.",
+          "claims": [
+            {
+              "metric": "payingCustomers",
+              "value": 19,
+              "period": { "fromWeek": 0, "toWeek": 0 },
+              "distortion": {
+                "reason": "counts-pilots-as-paying",
+                "note": "Only 7 teams pay. The other 12 are on a free extended pilot that Ostap counts because they have signed a letter of intent."
+              }
+            },
+            { "metric": "weeklyRevenueCents", "value": 126000, "period": { "fromWeek": 0, "toWeek": 0 } },
+            { "metric": "teamSize", "value": 4, "period": { "fromWeek": 0, "toWeek": 0 } }
+          ]
+        },
+        "hidden": {
+          "cashCents": 21000000,
+          "weeklyPriceCents": 18000,
+          "payingCustomers": 7,
+          "largestCustomerShareBps": 2600,
+          "baseWeeklyLeads": 9,
+          "productFit": 71,
+          "team": [
+            { "specialization": "engineering", "headcount": 4, "weeklyCostCents": 960000, "productivityBps": 11500 }
+          ],
+          "otherWeeklyCostsCents": 110000,
+          "founderAlignmentBps": 5500,
+          "unresolvedConflicts": [
+            {
+              "id": "open-core",
+              "founderIds": ["fd-ostap-hnatiuk", "fd-iryna-melnyk"],
+              "topic": "Ostap wants to open-source the core analyzer to grow the community; Iryna wants it closed so that large customers have a reason to pay."
+            }
+          ],
+          "strategy": "product"
+        },
+        "authoringNote": "Trade-off: the strongest product fit and organic lead flow in the pack, but a low price, no commercial founder, and an unresolved open-core conflict between the two founders. The application counts free pilots as paying customers. Revenue and team size are stated honestly, so a careful reader can see that $1,260 over 19 customers does not fit the price."
+      },
+      {
+        "id": "co-papirflow",
+        "name": "Papirflow",
+        "sector": "business-process-automation",
+        "businessModel": "b2b-recurring-software",
+        "description": "Сервіс для погодження рахунків постачальників і передачі їх в облікову систему для компаній середнього розміру.",
+        "founders": [
+          { "id": "fd-taras-kovalenko", "name": "Тарас Коваленко", "specialization": "sales" },
+          { "id": "fd-olena-bondar", "name": "Олена Бондар", "specialization": "operations" }
+        ],
+        "initialKnowledge": "inbound",
+        "application": {
+          "receivedWeek": 1,
+          "authorId": "fd-taras-kovalenko",
+          "summary": "Погодження рахунків постачальників: 23 клієнти, $9 660 виручки на тиждень, витрати близько $9 200 на тиждень.",
+          "text": "Papirflow автоматизує погодження рахунків постачальників для дистрибуторів і виробників середнього розміру. Замість пересилання PDF поштою бухгалтерія, закупівлі й керівник погоджують рахунок в одному маршруті, а дані самі потрапляють в облікову систему. Ми працюємо з 23 платними клієнтами, тижнева виручка — $9 660. Клієнтська база диверсифікована: жоден клієнт не дає більше 18% виручки. Витрати контрольовані — близько $9 200 на тиждень. Тарас десять років продавав впровадження ERP, Олена керувала фінансовими операціями в логістичній компанії, тож ми знаємо, як купують такі системи. Наступний крок — інтеграції з двома найпоширенішими обліковими системами та вихід на ринок Польщі. Потрібен капітал на розширення відділу продажів.",
+          "claims": [
+            { "metric": "payingCustomers", "value": 23, "period": { "fromWeek": 0, "toWeek": 0 } },
+            { "metric": "weeklyRevenueCents", "value": 966000, "period": { "fromWeek": 0, "toWeek": 0 } },
+            {
+              "metric": "largestCustomerShareBps",
+              "value": 1800,
+              "period": { "fromWeek": 0, "toWeek": 0 },
+              "distortion": {
+                "reason": "optimistic-founder-claim",
+                "note": "One regional distributor pays for 47% of revenue through a multi-site contract. Taras counts each of its sites as a separate customer."
+              }
+            },
+            {
+              "metric": "weeklyBurnCents",
+              "value": 920000,
+              "period": { "fromWeek": 0, "toWeek": 0 },
+              "distortion": {
+                "reason": "excludes-contractor-costs",
+                "note": "The three contract developers who build the product ($11,400 a week) are booked as a project cost, not as operating costs."
+              }
+            }
+          ]
+        },
+        "hidden": {
+          "cashCents": 38000000,
+          "weeklyPriceCents": 42000,
+          "payingCustomers": 23,
+          "largestCustomerShareBps": 4700,
+          "baseWeeklyLeads": 4,
+          "productFit": 46,
+          "team": [
+            { "specialization": "sales", "headcount": 2, "weeklyCostCents": 520000, "productivityBps": 12000 },
+            { "specialization": "operations", "headcount": 1, "weeklyCostCents": 220000, "productivityBps": 10000 },
+            { "specialization": "engineering", "headcount": 3, "weeklyCostCents": 1140000, "productivityBps": 8500 }
+          ],
+          "otherWeeklyCostsCents": 180000,
+          "founderAlignmentBps": 8800,
+          "unresolvedConflicts": [],
+          "strategy": "growth"
+        },
+        "authoringNote": "Trade-off: real revenue, the most cash, a strong seller and aligned founders, but one customer is almost half of revenue, the product is built by contractors, and fit is mediocre. The application understates both the concentration and the burn. The revenue figure is honest, so the gap only shows once the player checks customers or costs."
+      },
+      {
+        "id": "co-rampa",
+        "name": "Rampa",
+        "sector": "logistics-software",
+        "businessModel": "b2b-recurring-software",
+        "description": "Планування слотів розвантаження для регіональних складів і перевізників.",
+        "founders": [
+          { "id": "fd-andrii-savchuk", "name": "Андрій Савчук", "specialization": "operations" }
+        ],
+        "initialKnowledge": "unknown",
+        "hidden": {
+          "cashCents": 7500000,
+          "weeklyPriceCents": 65000,
+          "payingCustomers": 11,
+          "largestCustomerShareBps": 1500,
+          "baseWeeklyLeads": 2,
+          "productFit": 62,
+          "team": [
+            { "specialization": "operations", "headcount": 1, "weeklyCostCents": 150000, "productivityBps": 10000 },
+            { "specialization": "engineering", "headcount": 1, "weeklyCostCents": 330000, "productivityBps": 9000 }
+          ],
+          "otherWeeklyCostsCents": 60000,
+          "founderAlignmentBps": 10000,
+          "unresolvedConflicts": [],
+          "strategy": "conserve"
+        },
+        "authoringNote": "Trade-off: covers its costs with 11 well-spread, high-price customers and decent fit, but has the least cash, almost no lead flow, a solo founder and one engineer, so it can barely grow. Not delivered to the player in Gamma; it becomes discoverable through outbound in a later milestone."
+      }
+    ]
+  }
+}
