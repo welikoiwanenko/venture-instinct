@@ -36,8 +36,10 @@ reviews:
         arguments and write to stdout/stderr; it must not duplicate domain rules and
         imports only from src/app/. src/tui/** is the terminal UI adapter (Ink + React
         via React.createElement, no JSX): it may use the terminal and the ink/react
-        packages, holds no game rules, and imports only from src/app/ and src/tui/
-        (test/tui-boundary.test.ts enforces this). src/main.ts prints one runtime line
+        packages, holds no game rules, and imports only from src/app/ and src/tui/,
+        never the developer-only src/app/debug.ts (test/tui-boundary.test.ts
+        enforces this). Player-facing reads go through viewAsPlayer, which must
+        never expose hidden state, provenance or unknown companies. src/main.ts prints one runtime line
         when run directly.
     - path: "test/**"
       instructions: |

@@ -13,11 +13,21 @@ import {
   type ManifestIssue,
 } from "../manifest/campaign-manifest.ts";
 import { canonicalHash } from "../manifest/canonical-json.ts";
+import { buildPlayerView, searchPlayerView, type PlayerCompany, type PlayerView } from "../knowledge/player-view.ts";
 
 // Adapters import only from src/app/, so the helpers they need are re-exported here.
 export { formatManifestIssue, type ManifestIssue } from "../manifest/campaign-manifest.ts";
 export { canonicalJson } from "../manifest/canonical-json.ts";
 export { formatCentsAsUsd } from "./format.ts";
+export type {
+  PlayerCompany,
+  PlayerCompanyProfile,
+  PlayerFounder,
+  PlayerObservation,
+  PlayerView,
+} from "../knowledge/player-view.ts";
+export { compareObservations, type ObservationComparison, type VerificationStatus } from "../knowledge/verification.ts";
+export { METRICS, type Metric, type Period } from "../knowledge/observation.ts";
 
 export interface Campaign {
   readonly id: string;
@@ -111,4 +121,19 @@ export function inspectCampaign(campaign: Campaign): CampaignSummary {
     portfolioSize: state.portfolio.length,
     stateHash: canonicalHash(state),
   });
+}
+
+/**
+ * What the player has legitimately learned (design §9.1, §17.4): known companies with
+ * their public profile, the player's own decisions and the delivered observations with
+ * their statuses. The only campaign read a player-facing adapter needs besides
+ * `inspectCampaign`. Pure: never changes the campaign, advances time or draws randomness.
+ */
+export function viewAsPlayer(campaign: Campaign): PlayerView {
+  return buildPlayerView({ campaignId: campaign.id, state: campaign.state, profiles: campaign.scenario.content.companies });
+}
+
+/** Known companies whose readable text matches `query`. Unknown companies are never searched. */
+export function searchKnownCompanies(campaign: Campaign, query: string): readonly PlayerCompany[] {
+  return searchPlayerView(viewAsPlayer(campaign), query);
 }
