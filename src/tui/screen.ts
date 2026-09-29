@@ -2,7 +2,8 @@
 // the linear text mode) draw this model, so their content never drifts apart. Statuses
 // always carry a text label and a symbol; colour is decoration only.
 
-import { SECTIONS, sectionIndex, type Pane, type SectionId, type TuiState } from "./model.ts";
+import { formatCentsAsUsd, inspectCampaign, type CampaignSummary } from "../app/campaign-app.ts";
+import { inputMode, SECTIONS, sectionIndex, type InputMode, type SectionId, type TuiState } from "./model.ts";
 
 export interface StatusField {
   readonly label: string;
@@ -29,7 +30,7 @@ export interface Screen {
   readonly queue: string;
   readonly nav: readonly NavItem[];
   readonly title: string;
-  /** "3 of 6" */
+  /** "3 of 7" */
   readonly position: string;
   readonly body: readonly string[];
 }
@@ -38,7 +39,7 @@ export interface Screen {
 export const NARROW_COLUMNS = 72;
 
 const ANYWHERE_KEYS: readonly KeyHint[] = [
-  { keys: "1-6", action: "go to section", short: "jump" },
+  { keys: "1-7", action: "go to section", short: "jump" },
   { keys: "Tab", action: "next section" },
   { keys: "S-Tab", action: "previous section" },
   { keys: "?", action: "help", short: "help" },
@@ -56,21 +57,35 @@ const CONTENT_KEYS: readonly KeyHint[] = [
   { keys: "Esc/←", action: "back to the section list", short: "back" },
 ];
 
+// Printable keys are text in the seed field, so only these act there.
+const SEED_KEYS: readonly KeyHint[] = [
+  { keys: "Enter", action: "start the campaign", short: "start" },
+  { keys: "Bksp", action: "erase a character", short: "erase" },
+  { keys: "Esc/←", action: "back to the section list", short: "back" },
+  { keys: "Tab", action: "next section", short: "next section" },
+];
+
 const PAGE_KEY: KeyHint = { keys: "PgUp/PgDn", action: "scroll the content a page" };
 
-/** Keys per focused pane; the hint bar shows the focused pane's keys. */
-export const PANE_KEYS: Readonly<Record<Pane, readonly KeyHint[]>> = {
+/** Keys per input mode; the hint bar shows the current mode's keys. */
+export const MODE_KEYS: Readonly<Record<InputMode, readonly KeyHint[]>> = {
   sections: [...SECTION_LIST_KEYS, ...ANYWHERE_KEYS],
   content: [...CONTENT_KEYS, ...ANYWHERE_KEYS],
+  seed: SEED_KEYS,
 };
 
-const PANE_LABELS: Readonly<Record<Pane, string>> = { sections: "Section list", content: "Content" };
+const MODE_LABELS: Readonly<Record<InputMode, string>> = {
+  sections: "Section list",
+  content: "Content",
+  seed: "Seed field",
+};
 
 /** Help screen: every key, grouped by where it works. */
 export function helpLines(): string[] {
   const groups: Array<[string, readonly KeyHint[]]> = [
     ["In the section list", SECTION_LIST_KEYS],
     ["In the content", CONTENT_KEYS],
+    ["In the seed field (type the seed)", SEED_KEYS.slice(0, 2)],
     ["Anywhere", [PAGE_KEY, ...ANYWHERE_KEYS]],
   ];
   const width = Math.max(...groups.flatMap(([, hints]) => hints.map((h) => h.keys.length)));
@@ -78,15 +93,19 @@ export function helpLines(): string[] {
 }
 
 /**
- * The always-visible hints for the focused pane, led by the pane's name, packed into
- * as few lines of `width` as possible without splitting a hint. Keys without a `short`
- * label are listed only in help.
+ * The always-visible hints for the input mode, led by its name, packed into as few
+ * lines of `width` as possible without splitting a hint. Keys without a `short` label
+ * are listed only in help.
  */
-export function hintBar(focus: Pane, width: number): string[] {
-  const items = [
-    `[${PANE_LABELS[focus]}]`,
-    ...PANE_KEYS[focus].flatMap((h) => (h.short === undefined ? [] : [`${h.keys} ${h.short}`])),
-  ];
+export function hintBar(mode: InputMode, width: number): string[] {
+  return packItems(
+    [`[${MODE_LABELS[mode]}]`, ...MODE_KEYS[mode].flatMap((h) => (h.short === undefined ? [] : [`${h.keys} ${h.short}`]))],
+    width,
+  );
+}
+
+/** Joins items with " · ", starting a new line instead of splitting an item. */
+export function packItems(items: readonly string[], width: number): string[] {
   const lines: string[] = [];
   for (const item of items) {
     const last = lines.at(-1);
@@ -100,14 +119,15 @@ export function hintBar(focus: Pane, width: number): string[] {
 }
 
 export const TEXT_COMMANDS: readonly KeyHint[] = [
-  { keys: "1-6 or a name", action: "go to section, e.g. 3 or companies" },
+  { keys: "start <seed>", action: "start a campaign, e.g. start demo-1" },
+  { keys: "1-7 or a name", action: "go to section, e.g. 4 or companies" },
   { keys: "n / next", action: "next section" },
   { keys: "p / prev", action: "previous section" },
   { keys: "? / help", action: "list commands" },
   { keys: "q / quit", action: "quit" },
 ];
 
-const PLACEHOLDERS: Readonly<Record<SectionId, readonly string[]>> = {
+const PLACEHOLDERS: Readonly<Record<Exclude<SectionId, "overview">, readonly string[]>> = {
   inbox: [
     "Messages delivered to you this week: applications, replies, research",
     "results and company updates. Each item shows its source and date.",
@@ -146,21 +166,93 @@ const PLACEHOLDERS: Readonly<Record<SectionId, readonly string[]>> = {
   ],
 };
 
-export function buildScreen(state: TuiState): Screen {
+export interface ScreenContext {
+  /** Where new campaigns take their scenario from, shown on the start form. */
+  readonly scenarioLabel: string;
+  /** Linear text mode: the start form asks for a `start <seed>` command, not Enter. */
+  readonly linear?: boolean;
+}
+
+/**
+ * Pure read: the campaign is only ever passed to `inspectCampaign`, so building (and
+ * rebuilding) a screen never changes it and shows only player-visible data.
+ */
+export function buildScreen(state: TuiState, context: ScreenContext): Screen {
   const index = sectionIndex(state.section);
   const section = SECTIONS[index] ?? SECTIONS[0];
+  const summary = state.campaign === undefined ? undefined : inspectCampaign(state.campaign);
   return {
-    status: [
-      { label: "Week", value: "— no campaign" },
-      { label: "Slots", value: "—" },
-      { label: "Budget", value: "—" },
-    ],
+    status: statusFields(summary),
     queue: "○ Nothing needs you",
     nav: SECTIONS.map((s) => ({ id: s.id, key: s.key, title: s.title, active: s.id === state.section })),
     title: section.title,
     position: `${index + 1} of ${SECTIONS.length}`,
-    body: PLACEHOLDERS[section.id],
+    body:
+      section.id !== "overview"
+        ? PLACEHOLDERS[section.id]
+        : summary === undefined
+          ? startForm(state, context)
+          : overview(summary),
   };
+}
+
+function statusFields(s: CampaignSummary | undefined): StatusField[] {
+  if (s === undefined) {
+    return [
+      { label: "Week", value: "— no campaign" },
+      { label: "Slots", value: "—" },
+      { label: "Budget", value: "—" },
+    ];
+  }
+  return [
+    { label: "Week", value: `${s.planningWeek} (${s.completedWeeks}/${s.horizonWeeks} done)` },
+    { label: "Slots", value: `${s.slotsAvailable} left` },
+    { label: "Budget", value: formatCentsAsUsd(s.capitalAvailableCents) },
+  ];
+}
+
+function startForm(state: TuiState, context: ScreenContext): string[] {
+  const editing = inputMode(state) === "seed";
+  const seed = editing ? `[${state.seedDraft}_]` : state.seedDraft === "" ? "(none yet)" : state.seedDraft;
+  const lines = [
+    "No campaign yet. Start one from a seed: the same seed and scenario always give",
+    "the same campaign.",
+    "",
+    `Scenario   ${context.scenarioLabel}`,
+    `Seed       ${seed}`,
+    "",
+    context.linear === true
+      ? "Type start and a seed (1-128 characters, no spaces), e.g. start demo-1."
+      : editing
+        ? "Type a seed (1-128 characters, no spaces), then press Enter to start."
+        : "Press Enter to type a seed.",
+  ];
+  if (state.startErrors.length > 0) {
+    lines.push("", "✖ Campaign not started:", ...state.startErrors.map((e) => `  ${e}`));
+  }
+  return lines;
+}
+
+function overview(s: CampaignSummary): string[] {
+  const row = (label: string, value: string) => `${label.padEnd(11)}${value}`;
+  return [
+    "✔ Campaign started. Nothing has happened yet: plan week 1.",
+    "",
+    row("Week", `planning week ${s.planningWeek}; ${s.completedWeeks} of ${s.horizonWeeks} completed`),
+    row("Window", s.investmentWindowOpen ? "initial investments open" : "initial investments closed"),
+    row("Slots", `${s.slotsAvailable} available this week`),
+    row("Capital", `${formatCentsAsUsd(s.capitalAvailableCents)} available`),
+    row("Invested", `${s.initialInvestmentsMade} of ${s.maxInitialInvestments} initial checks of ${formatCentsAsUsd(s.checkSizeCents)}`),
+    row("Portfolio", s.portfolioSize === 0 ? "empty" : `${s.portfolioSize} companies`),
+    "",
+    "Manifest",
+    row("Campaign", s.campaignId),
+    row("Seed", s.seed),
+    row("Scenario", s.scenarioId),
+    row("Config", `${s.configId} v${s.configVersion}`),
+    // A prefix is enough to compare with the CLI and keeps the row on one line.
+    row("State", `${s.stateHash.slice(0, "sha256:".length + 12)}…`),
+  ];
 }
 
 /** The whole screen as plain lines, top to bottom, for assistive tools and pipes. */

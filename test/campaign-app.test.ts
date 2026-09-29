@@ -4,8 +4,8 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 
-import { initializeCampaign, inspectCampaign, type Campaign } from "../src/app/campaign-app.ts";
-import { runCampaignInit, formatCentsAsUsd } from "../src/cli/campaign-init.ts";
+import { formatCentsAsUsd, initializeCampaign, inspectCampaign, type Campaign } from "../src/app/campaign-app.ts";
+import { runCampaignInit } from "../src/cli/campaign-init.ts";
 import { POC_BASELINE_CONFIG } from "../src/config/baseline.ts";
 import { canonicalJson } from "../src/manifest/canonical-json.ts";
 

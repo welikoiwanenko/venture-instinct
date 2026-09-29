@@ -79,3 +79,14 @@ test("the boundary check rejects domain internals, hidden state and other adapte
     "chalk (package not allowed)",
   ]);
 });
+
+test("TUI code reads a campaign only through the application API", () => {
+  // `inspectCampaign` is the player-visible read; the TUI must not reach into the
+  // handle's config, state or manifest itself.
+  const problems = tuiFiles(TUI_DIR).flatMap((file) =>
+    [...readFileSync(file, "utf8").matchAll(/\bcampaign\??\.(state|config|manifest)\b/g)].map(
+      (m) => `${relative(ROOT, file)}: ${m[0]}`,
+    ),
+  );
+  assert.deepEqual(problems, []);
+});

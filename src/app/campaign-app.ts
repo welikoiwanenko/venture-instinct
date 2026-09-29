@@ -16,6 +16,7 @@ import { canonicalHash } from "../manifest/canonical-json.ts";
 // Adapters import only from src/app/, so the helpers they need are re-exported here.
 export { formatManifestIssue, type ManifestIssue } from "../manifest/campaign-manifest.ts";
 export { canonicalJson } from "../manifest/canonical-json.ts";
+export { formatCentsAsUsd } from "./format.ts";
 
 export interface Campaign {
   readonly id: string;
