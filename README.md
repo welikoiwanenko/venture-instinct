@@ -36,6 +36,15 @@ npm run --silent campaign -- --seed demo-1 --scenario fixtures/scenarios/technic
 
 Prints a short summary (week, slots, capital, check size, portfolio, state hash) and then the canonical manifest. `--config <file.json>` replaces the baseline config. `--json` prints `{ summary, manifest }` as one line of canonical JSON, which is handy for `diff`. Identical inputs always give byte-identical output. Invalid input prints every issue to stderr and exits 1 without creating a campaign. To see this, try `--config fixtures/configs/invalid-over-budget.json`. A missing or unknown argument, or an input file that cannot be read or parsed as JSON, exits 2.
 
+### A campaign with companies: player view and debug view
+
+```bash
+npm run --silent campaign -- --seed demo-1 --scenario content/scenarios/gamma-three-companies.json --view player
+npm run --silent campaign -- --seed demo-1 --scenario content/scenarios/gamma-three-companies.json --view debug
+```
+
+This starts from the Gamma pack. The week 1 inbound applications of Tracebench and Papirflow are delivered as observations before the first plan. `--view player` prints what the player knows: the two companies, their public profile, and every delivered observation with its source, week received, period and status. Rampa is absent, and so is anything hidden. `--view debug` is for developers only (design §17.4). It prints every company, including Rampa, with its hidden starting state, the true value behind each claim and its distortion reason, and all five dimensions. `--json` prints either view as canonical JSON. The default `--view summary` is the output above, which now also shows the number of known companies.
+
 ## Layout
 
 - `src/` — domain runtime; no UI, persistence, network or Linear dependencies. Exceptions: `src/tui/**` and `src/cli/**` (below) are adapters, and `src/main.ts` prints one runtime line when run directly (`npm start`).

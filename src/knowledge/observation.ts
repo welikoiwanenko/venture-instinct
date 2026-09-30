@@ -112,6 +112,13 @@ export type AppendResult =
   | { readonly ok: true; readonly log: ObservationLog }
   | { readonly ok: false; readonly issues: readonly ContentIssue[] };
 
+/**
+ * Observation ids are derived from authored ids plus a suffix (src/knowledge/inbound.ts:
+ * "obs-" + a 64-character company id + "-application-largest-customer-share-bps" is 107),
+ * so they may be longer than authored ids.
+ */
+export const OBSERVATION_ID_MAX_LENGTH = 128;
+
 /** Earliest week a period may start: ten years before the campaign. */
 const EARLIEST_WEEK = -520;
 
@@ -173,7 +180,7 @@ function checkObservation(value: unknown, path: string, log: ObservationLog, iss
   if (record === undefined) return undefined;
   rejectUnknownKeys(record, OBSERVATION_KEYS, path, issues);
 
-  const observationId = readId(record, "observationId", path, issues);
+  const observationId = readId(record, "observationId", path, issues, OBSERVATION_ID_MAX_LENGTH);
   if (observationId !== undefined && log.observations.some((o) => o.observationId === observationId)) {
     issues.push({
       path: childPath(path, "observationId"),

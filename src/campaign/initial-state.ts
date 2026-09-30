@@ -4,6 +4,7 @@
 
 import type { CampaignConfig } from "../config/campaign-config.ts";
 import type { CompanyProfile } from "../content/company-profile.ts";
+import { deliverInboundApplications } from "../knowledge/inbound.ts";
 import { EMPTY_OBSERVATION_LOG, type ObservationLog } from "../knowledge/observation.ts";
 import { initialCompanyStates, type CompanyState } from "./company-dimensions.ts";
 import { openingInvestmentBudget, type InvestmentBudget } from "./investment-budget.ts";
@@ -37,6 +38,7 @@ export function createInitialCampaignState(config: CampaignConfig, companies: re
     budget: openingInvestmentBudget(config),
     portfolio: Object.freeze([]) as readonly [],
     companies: initialCompanyStates(companies),
-    observations: EMPTY_OBSERVATION_LOG,
+    // The week 1 inbound wave is on the player's desk when planning starts (§5, §8.1).
+    observations: deliverInboundApplications(EMPTY_OBSERVATION_LOG, companies, planningWeek),
   });
 }

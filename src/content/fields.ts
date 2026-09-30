@@ -11,7 +11,8 @@ export interface ContentIssue {
 }
 
 export const ID_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
-const ID_MAX_LENGTH = 64;
+/** Authored ids (companies, founders, conflicts). */
+export const ID_MAX_LENGTH = 64;
 
 export function childPath(parent: string, key: string | number): string {
   if (typeof key === "number") return `${parent}[${key}]`;
@@ -72,12 +73,13 @@ export function readText(
   return value;
 }
 
-/** A stable lower-case kebab-case identifier, e.g. "co-relaybase". */
+/** A stable lower-case kebab-case identifier, e.g. "co-relaybase", of at most `maxLength` characters. */
 export function readId(
   record: Record<string, unknown>,
   key: string,
   parent: string,
   issues: ContentIssue[],
+  maxLength = ID_MAX_LENGTH,
 ): string | undefined {
   const path = childPath(parent, key);
   const value = record[key];
@@ -85,10 +87,10 @@ export function readId(
     issues.push({ path, message: "is required" });
     return undefined;
   }
-  if (typeof value !== "string" || value.length > ID_MAX_LENGTH || !ID_PATTERN.test(value)) {
+  if (typeof value !== "string" || value.length > maxLength || !ID_PATTERN.test(value)) {
     issues.push({
       path,
-      message: `must be a lower-case kebab-case id of at most ${ID_MAX_LENGTH} characters, got ${describe(value)}`,
+      message: `must be a lower-case kebab-case id of at most ${maxLength} characters, got ${describe(value)}`,
     });
     return undefined;
   }
