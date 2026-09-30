@@ -61,6 +61,7 @@ export const METRIC_NAMES = Object.keys(METRICS) as readonly Metric[];
 
 export type ObservationContent =
   | { readonly kind: "metric"; readonly metric: Metric; readonly value: number }
+  /** `title` is the one-line short form of `text`, e.g. an application's summary. */
   | { readonly kind: "text"; readonly title: string; readonly text: string };
 
 export interface Observation {
