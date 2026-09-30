@@ -169,7 +169,7 @@ test("narrow layout keeps every line within the window", () => {
 test("a short window scrolls the body and reports the visible lines", () => {
   const state = update(atInbox(), { type: "scroll", delta: 1, max: 1 });
   const out = frame(state, 100, 10);
-  assert.match(out, /lines 2–4 of 4/);
+  assert.match(out, /lines 2–4 of 5/);
   assert.match(out, /▸2 Inbox/, "too short for the side navigation, so the compact layout is used");
   assert.ok(out.split("\n").length <= 10, out);
 });

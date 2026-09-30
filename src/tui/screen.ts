@@ -2,7 +2,21 @@
 // the linear text mode) draw this model, so their content never drifts apart. Statuses
 // always carry a text label and a symbol; colour is decoration only.
 
-import { formatCentsAsUsd, inspectCampaign, type CampaignSummary } from "../app/campaign-app.ts";
+import {
+  compareObservations,
+  formatCentsAsUsd,
+  formatMetricValue,
+  formatSource,
+  inspectCampaign,
+  METRIC_LABELS,
+  STATUS_LABELS,
+  viewAsPlayer,
+  type CampaignSummary,
+  type Metric,
+  type PlayerCompany,
+  type PlayerObservation,
+  type PlayerView,
+} from "../app/campaign-app.ts";
 import { inputMode, SECTIONS, sectionIndex, type InputMode, type SectionId, type TuiState } from "./model.ts";
 
 export interface StatusField {
@@ -33,6 +47,13 @@ export interface Screen {
   /** "3 of 7" */
   readonly position: string;
   readonly body: readonly string[];
+  /** Known companies, for the Companies cursor; 0 without a campaign. */
+  readonly companyCount: number;
+  /**
+   * Body lines [start, end) of the selected company in the Companies list. The renderer
+   * keeps them in the viewport, whatever the scroll position or window size.
+   */
+  readonly selected?: { readonly start: number; readonly end: number };
 }
 
 /** Below this width the TUI drops the side navigation and uses a single column. */
@@ -65,6 +86,18 @@ const SEED_KEYS: readonly KeyHint[] = [
   { keys: "Tab", action: "next section", short: "next section" },
 ];
 
+const COMPANY_LIST_KEYS: readonly KeyHint[] = [
+  { keys: "↑↓ j/k", action: "choose a company", short: "choose" },
+  { keys: "Enter/→", action: "open the company's card", short: "open" },
+  { keys: "Esc/←", action: "back to the section list", short: "back" },
+];
+
+const COMPANY_CARD_KEYS: readonly KeyHint[] = [
+  { keys: "↑↓ j/k", action: "scroll", short: "scroll" },
+  { keys: "e", action: "messages in short or full form", short: "short/full" },
+  { keys: "Esc/←", action: "back to the company list", short: "back" },
+];
+
 const PAGE_KEY: KeyHint = { keys: "PgUp/PgDn", action: "scroll the content a page" };
 
 /** Keys per input mode; the hint bar shows the current mode's keys. */
@@ -72,12 +105,16 @@ export const MODE_KEYS: Readonly<Record<InputMode, readonly KeyHint[]>> = {
   sections: [...SECTION_LIST_KEYS, ...ANYWHERE_KEYS],
   content: [...CONTENT_KEYS, ...ANYWHERE_KEYS],
   seed: SEED_KEYS,
+  "company-list": [...COMPANY_LIST_KEYS, ...ANYWHERE_KEYS],
+  "company-card": [...COMPANY_CARD_KEYS, ...ANYWHERE_KEYS],
 };
 
 const MODE_LABELS: Readonly<Record<InputMode, string>> = {
   sections: "Section list",
   content: "Content",
   seed: "Seed field",
+  "company-list": "Company list",
+  "company-card": "Company card",
 };
 
 /** Help screen: every key, grouped by where it works. */
@@ -86,6 +123,7 @@ export function helpLines(): string[] {
     ["In the section list", SECTION_LIST_KEYS],
     ["In the content", CONTENT_KEYS],
     ["In the seed field (type the seed)", SEED_KEYS.slice(0, 2)],
+    ["In Companies", [COMPANY_LIST_KEYS[0]!, COMPANY_LIST_KEYS[1]!, COMPANY_CARD_KEYS[1]!, { keys: "Esc/←", action: "from a card, back to the company list" }]],
     ["Anywhere", [PAGE_KEY, ...ANYWHERE_KEYS]],
   ];
   const width = Math.max(...groups.flatMap(([, hints]) => hints.map((h) => h.keys.length)));
@@ -123,6 +161,9 @@ export const TEXT_COMMANDS: readonly KeyHint[] = [
   { keys: "1-7 or a name", action: "go to section, e.g. 4 or companies" },
   { keys: "n / next", action: "next section" },
   { keys: "p / prev", action: "previous section" },
+  { keys: "open <n>", action: "open a company's card, e.g. open 1" },
+  { keys: "expand / short", action: "messages on a card in full or short form" },
+  { keys: "back", action: "from a card, back to the company list" },
   { keys: "? / help", action: "list commands" },
   { keys: "q / quit", action: "quit" },
 ];
@@ -132,7 +173,8 @@ const PLACEHOLDERS: Readonly<Record<Exclude<SectionId, "overview">, readonly str
     "Messages delivered to you this week: applications, replies, research",
     "results and company updates. Each item shows its source and date.",
     "",
-    "· Nothing here yet: inbound applications arrive with the first companies.",
+    "· The inbox arrives with weekly planning. Until then, this week's",
+    "  applications are on each company's card: 4 Companies.",
   ],
   discovery: [
     "Leads you have not engaged with yet: signals from the market and",
@@ -144,7 +186,7 @@ const PLACEHOLDERS: Readonly<Record<Exclude<SectionId, "overview">, readonly str
     "Companies you know, with the evidence you have about each one:",
     "founders, metrics with their dates, and conflicting claims side by side.",
     "",
-    "· Nothing here yet: companies arrive in the next milestone.",
+    "· No campaign yet: start one on the Overview.",
   ],
   portfolio: [
     "Your investments: stake, cash versus illiquid valuation with its date,",
@@ -181,18 +223,27 @@ export function buildScreen(state: TuiState, context: ScreenContext): Screen {
   const index = sectionIndex(state.section);
   const section = SECTIONS[index] ?? SECTIONS[0];
   const summary = state.campaign === undefined ? undefined : inspectCampaign(state.campaign);
+  const view = state.campaign === undefined ? undefined : viewAsPlayer(state.campaign);
+  const open = view !== undefined && state.companyOpen ? view.companies[state.companyCursor] : undefined;
+  const list = section.id === "companies" && view !== undefined && open === undefined ? companyList(view, state.companyCursor, context) : undefined;
   return {
     status: statusFields(summary),
     queue: "○ Nothing needs you",
     nav: SECTIONS.map((s) => ({ id: s.id, key: s.key, title: s.title, active: s.id === state.section })),
-    title: section.title,
+    title: section.id === "companies" && open !== undefined ? `${section.title} › ${companyName(open)}` : section.title,
     position: `${index + 1} of ${SECTIONS.length}`,
     body:
-      section.id !== "overview"
-        ? PLACEHOLDERS[section.id]
-        : summary === undefined
+      section.id === "overview"
+        ? summary === undefined
           ? startForm(state, context)
-          : overview(summary),
+          : overview(summary)
+        : section.id === "companies" && view !== undefined
+          ? open !== undefined
+            ? companyCard(open, state.messagesExpanded, context)
+            : (list?.lines ?? [])
+          : PLACEHOLDERS[section.id],
+    companyCount: view?.companies.length ?? 0,
+    ...(list?.selected === undefined ? {} : { selected: list.selected }),
   };
 }
 
@@ -244,6 +295,7 @@ function overview(s: CampaignSummary): string[] {
     row("Capital", `${formatCentsAsUsd(s.capitalAvailableCents)} available`),
     row("Invested", `${s.initialInvestmentsMade} of ${s.maxInitialInvestments} initial checks of ${formatCentsAsUsd(s.checkSizeCents)}`),
     row("Portfolio", s.portfolioSize === 0 ? "empty" : `${s.portfolioSize} companies`),
+    row("Companies", s.knownCompanies === 0 ? "none known yet" : `${s.knownCompanies} known: see 4 Companies`),
     "",
     "Manifest",
     row("Campaign", s.campaignId),
@@ -253,6 +305,108 @@ function overview(s: CampaignSummary): string[] {
     // A prefix is enough to compare with the CLI and keeps the row on one line.
     row("State", `${s.stateHash.slice(0, "sha256:".length + 12)}…`),
   ];
+}
+
+function companyName(company: PlayerCompany): string {
+  return company.profile?.name ?? company.companyId;
+}
+
+/** Known companies only: the player view has no unknown ones, so nothing else can be listed or counted. */
+function companyList(
+  view: PlayerView,
+  cursor: number,
+  context: ScreenContext,
+): { lines: string[]; selected?: { start: number; end: number } } {
+  if (view.companies.length === 0) {
+    return { lines: ["You do not know any companies yet."] };
+  }
+  const count = view.companies.length;
+  const lines = [
+    `${count} ${count === 1 ? "company" : "companies"} you know, in no particular order.`,
+    context.linear === true ? "Type open and a number to read a card, e.g. open 1." : "Choose one with ↑/↓ and press Enter to open its card.",
+    "",
+  ];
+  let selected: { start: number; end: number } | undefined;
+  view.companies.forEach((company, i) => {
+    const start = lines.length;
+    const marker = context.linear !== true && i === cursor ? "▸" : " ";
+    const sector = company.profile?.sector ?? "sector unknown";
+    lines.push(`${marker} ${i + 1}  ${companyName(company)} · ${sector}`);
+    if (company.profile !== undefined) lines.push(`     ${company.profile.description}`);
+    if (i === cursor) selected = { start, end: lines.length };
+  });
+  return selected === undefined ? { lines } : { lines, selected };
+}
+
+/**
+ * Evidence only (§9.1, §15): the public profile, the player's own status, messages and
+ * figures, each with source, week received, period and status. Figures of the same
+ * metric are shown side by side with their difference. There is no score or ranking.
+ */
+function companyCard(company: PlayerCompany, expanded: boolean, context: ScreenContext): string[] {
+  const profile = company.profile;
+  const names = new Map(profile?.founders.map((f) => [f.founderId, f.name]));
+  const lines: string[] = [];
+  if (profile !== undefined) {
+    lines.push(`${profile.name} · ${profile.sector} · ${profile.businessModel}`, profile.description, "", "Founders");
+    for (const f of profile.founders) lines.push(`  ${f.name} · ${f.specialization}`);
+    lines.push("");
+  }
+  lines.push(`You: decision ${company.decision} · contact ${company.contact} · opportunity ${company.opportunity}`);
+  if (company.observations.some((o) => o.period.toWeek <= 0)) {
+    lines.push("", "Each item: the period it describes · who said it · when you got it · status.", "Week 0 and earlier are before the campaign started.");
+  }
+
+  const messages = company.observations.filter((o) => o.content.kind === "text");
+  if (messages.length > 0) {
+    const how = context.linear === true ? (expanded ? "type short for the short form" : "type expand to read in full") : expanded ? "e: short form" : "e: read in full";
+    lines.push("", `Messages (${expanded ? "full" : "short form"}; ${how})`);
+    messages.forEach((o, i) => {
+      if (o.content.kind !== "text") return;
+      if (expanded && i > 0) lines.push("");
+      lines.push(`  ✉ ${o.content.title}`, `    ${evidenceLine(o, names)}`);
+      if (expanded) lines.push("", `    ${o.content.text}`);
+    });
+  }
+
+  const byMetric = new Map<Metric, PlayerObservation[]>();
+  for (const o of company.observations) {
+    if (o.content.kind !== "metric") continue;
+    byMetric.set(o.content.metric, [...(byMetric.get(o.content.metric) ?? []), o]);
+  }
+  if (byMetric.size > 0) {
+    lines.push("", "Figures");
+    for (const [metric, figures] of byMetric) {
+      if (figures.length === 1) {
+        const [only] = figures as [PlayerObservation];
+        lines.push(`  ${METRIC_LABELS[metric]}: ${valueOf(only)}`, `    ${evidenceLine(only, names)}`);
+        continue;
+      }
+      lines.push(`  ${METRIC_LABELS[metric]}: ${figures.length} figures side by side`);
+      for (const o of figures) lines.push(`    ${valueOf(o)} · ${evidenceLine(o, names)}`);
+      // First against last figure; every figure is listed above with its own period.
+      const diff = compareObservations(figures[0]!, figures.at(-1)!);
+      if (diff.samePeriod) {
+        lines.push(`    They differ by ${formatMetricValue(metric, Math.abs(diff.difference))} for overlapping periods.`);
+      } else {
+        const sign = diff.difference > 0 ? "+" : "";
+        lines.push(`    Change: ${sign}${formatMetricValue(metric, diff.difference)} from the earlier period to the later.`);
+      }
+    }
+  }
+  if (company.observations.length === 0) lines.push("", "Nothing delivered about this company yet.");
+  return lines;
+}
+
+function valueOf(o: PlayerObservation): string {
+  return o.content.kind === "metric" ? formatMetricValue(o.content.metric, o.content.value) : "";
+}
+
+/** Period, source, week received and status: every figure and message carries all four. */
+function evidenceLine(o: PlayerObservation, names: ReadonlyMap<string, string>): string {
+  const { fromWeek, toWeek } = o.period;
+  const period = fromWeek === toWeek ? `week ${toWeek}` : `weeks ${fromWeek} to ${toWeek}`;
+  return `${period} · ${formatSource(o.source, names)} · received week ${o.receivedWeek} · ${STATUS_LABELS[o.status]}`;
 }
 
 /** The whole screen as plain lines, top to bottom, for assistive tools and pipes. */
@@ -276,32 +430,41 @@ export function renderHelp(hints: readonly KeyHint[], width = Math.max(...hints.
 
 /**
  * Word-wraps to `width` columns so the renderer can scroll by visible line. Words longer
- * than the width are split. Counts code points: every glyph the TUI uses is single-width.
+ * than the width are split. A line's leading spaces are kept on every line it wraps
+ * into, so indented entries stay indented. Counts code points: every glyph the TUI uses
+ * is single-width.
  */
 export function wrapLines(lines: readonly string[], width: number): string[] {
-  const limit = Math.max(1, width);
   return lines.flatMap((line) => {
-    const out: string[] = [];
-    let current = "";
-    for (const word of line.split(" ")) {
-      let rest = word;
-      while ([...rest].length > limit) {
-        if (current !== "") {
-          out.push(current);
-          current = "";
-        }
-        out.push([...rest].slice(0, limit).join(""));
-        rest = [...rest].slice(limit).join("");
-      }
-      const joined = current === "" ? rest : `${current} ${rest}`;
-      if ([...joined].length <= limit) {
-        current = joined;
-      } else {
-        out.push(current);
-        current = rest;
-      }
-    }
-    out.push(current);
-    return out;
+    const indent = /^ */.exec(line)?.[0] ?? "";
+    // Keep the indent only while it leaves room for text.
+    if (indent === "" || indent.length * 2 > width) return wrapLine(line, width);
+    return wrapLine(line.slice(indent.length), width - indent.length).map((part) => indent + part);
   });
+}
+
+function wrapLine(line: string, width: number): string[] {
+  const limit = Math.max(1, width);
+  const out: string[] = [];
+  let current = "";
+  for (const word of line.split(" ")) {
+    let rest = word;
+    while ([...rest].length > limit) {
+      if (current !== "") {
+        out.push(current);
+        current = "";
+      }
+      out.push([...rest].slice(0, limit).join(""));
+      rest = [...rest].slice(limit).join("");
+    }
+    const joined = current === "" ? rest : `${current} ${rest}`;
+    if ([...joined].length <= limit) {
+      current = joined;
+    } else {
+      out.push(current);
+      current = rest;
+    }
+  }
+  out.push(current);
+  return out;
 }
