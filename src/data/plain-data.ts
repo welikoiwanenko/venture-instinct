@@ -72,6 +72,17 @@ export function describeThrown(error: unknown): string {
   return "an unreadable value was thrown";
 }
 
+/** Freezes `value` and everything reachable from it; returns it for chaining. */
+export function deepFreeze<T>(value: T): T {
+  if (typeof value === "object" && value !== null) {
+    for (const child of Object.values(value)) {
+      deepFreeze(child);
+    }
+    Object.freeze(value);
+  }
+  return value;
+}
+
 export function isPlainRecord(value: unknown): value is Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return false;

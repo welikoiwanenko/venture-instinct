@@ -5,7 +5,7 @@
 //
 //   { "id": "...", "contentVersion": 1, "content": { "purpose"?: "...", "companies": [...] } }
 
-import { describeThrown, isPlainRecord, snapshotPlainData, withSnapshotIssues } from "../data/plain-data.ts";
+import { deepFreeze, describeThrown, isPlainRecord, snapshotPlainData, withSnapshotIssues } from "../data/plain-data.ts";
 import { canonicalHash } from "../manifest/canonical-json.ts";
 import { checkCompanyProfile, type CompanyProfile } from "./company-profile.ts";
 import { childPath, describe, readArray, readRecord, readText, rejectUnknownKeys, type ContentIssue } from "./fields.ts";
@@ -31,7 +31,7 @@ const PACK_KEYS = ["id", "contentVersion", "content"] as const;
 const CONTENT_KEYS = ["purpose", "companies"] as const;
 
 /**
- * Validates an untrusted pack and returns a copy that shares nothing with it, plus the
+ * Validates an untrusted pack and returns a deeply frozen copy that shares nothing with it, plus the
  * canonical hash of that copy. Every issue is reported at once with its path under
  * `root`. The input is read once; getters are reported, never called.
  */
@@ -57,7 +57,7 @@ export function validateScenarioPack(untrusted: unknown, root = "scenario"): Sce
   if (issues.length > 0 || pack === undefined || contentHash === undefined) {
     return { ok: false, issues };
   }
-  return { ok: true, pack, contentHash };
+  return { ok: true, pack: deepFreeze(pack), contentHash };
 }
 
 function checkPack(value: unknown, root: string, issues: ContentIssue[]): ScenarioPack | undefined {
