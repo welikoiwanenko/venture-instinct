@@ -24,6 +24,7 @@ function twoCompanyPack(): Json {
   second["sector"] = "logistics-software";
   second["founders"][0]["id"] = "fd-fixture-beta-1";
   second["initialKnowledge"] = "unknown";
+  delete second["application"];
   pack["content"]["companies"].push(second);
   return pack;
 }
@@ -73,6 +74,8 @@ test("the initial company states are frozen and part of the hashed initial state
 
   const other = twoCompanyPack();
   other["content"]["companies"][1]["initialKnowledge"] = "inbound";
+  other["content"]["companies"][1]["application"] = structuredClone(other["content"]["companies"][0]["application"]);
+  other["content"]["companies"][1]["application"]["authorId"] = "fd-fixture-beta-1";
   const changed = initializeCampaign({ seed: "demo-1", scenario: other });
   assert.ok(changed.ok);
   assert.notEqual(changed.campaign.manifest.initialStateHash, c.manifest.initialStateHash);
