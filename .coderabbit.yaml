@@ -19,6 +19,9 @@ reviews:
   auto_review:
     enabled: true
     drafts: false
+    # Stacked PRs target the feature branch below them, not main; review those too.
+    base_branches:
+      - "^feature/.*"
   path_filters:
     - "!package-lock.json"
   path_instructions:
