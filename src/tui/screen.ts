@@ -7,6 +7,7 @@ import {
   formatCentsAsUsd,
   formatMetricValue,
   formatSource,
+  formatWeeks,
   inspectCampaign,
   METRIC_LABELS,
   STATUS_LABELS,
@@ -123,7 +124,15 @@ export function helpLines(): string[] {
     ["In the section list", SECTION_LIST_KEYS],
     ["In the content", CONTENT_KEYS],
     ["In the seed field (type the seed)", SEED_KEYS.slice(0, 2)],
-    ["In Companies", [COMPANY_LIST_KEYS[0]!, COMPANY_LIST_KEYS[1]!, COMPANY_CARD_KEYS[1]!, { keys: "Esc/←", action: "from a card, back to the company list" }]],
+    [
+      "In Companies",
+      [
+        { keys: "↑↓ j/k", action: "choose a company" },
+        { keys: "Enter/→", action: "open the company's card" },
+        { keys: "e", action: "messages in short or full form" },
+        { keys: "Esc/←", action: "from a card, back to the company list" },
+      ],
+    ],
     ["Anywhere", [PAGE_KEY, ...ANYWHERE_KEYS]],
   ];
   const width = Math.max(...groups.flatMap(([, hints]) => hints.map((h) => h.keys.length)));
@@ -404,9 +413,7 @@ function valueOf(o: PlayerObservation): string {
 
 /** Period, source, week received and status: every figure and message carries all four. */
 function evidenceLine(o: PlayerObservation, names: ReadonlyMap<string, string>): string {
-  const { fromWeek, toWeek } = o.period;
-  const period = fromWeek === toWeek ? `week ${toWeek}` : `weeks ${fromWeek} to ${toWeek}`;
-  return `${period} · ${formatSource(o.source, names)} · received week ${o.receivedWeek} · ${STATUS_LABELS[o.status]}`;
+  return `${formatWeeks(o.period)} · ${formatSource(o.source, names)} · received week ${o.receivedWeek} · ${STATUS_LABELS[o.status]}`;
 }
 
 /** The whole screen as plain lines, top to bottom, for assistive tools and pipes. */

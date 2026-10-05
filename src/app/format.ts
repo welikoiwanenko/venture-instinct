@@ -64,9 +64,14 @@ export function formatMetricValue(metric: Metric, value: number): string {
   }
 }
 
+/** `week 3` or `weeks -1 to 0`. */
+export function formatWeeks(period: Period): string {
+  return period.fromWeek === period.toWeek ? `week ${period.toWeek}` : `weeks ${period.fromWeek} to ${period.toWeek}`;
+}
+
 /** Week 0 and earlier are before the campaign started; the label says so. */
 export function formatPeriod(period: Period): string {
-  const span = period.fromWeek === period.toWeek ? `week ${period.toWeek}` : `weeks ${period.fromWeek} to ${period.toWeek}`;
+  const span = formatWeeks(period);
   return period.toWeek <= 0 ? `${span} (before the campaign)` : span;
 }
 
