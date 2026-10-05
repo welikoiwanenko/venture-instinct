@@ -7,24 +7,24 @@
 // Observation ids are derived from company id and metric, never from order or time,
 // so the same pack always delivers the same ids.
 
-import type { CompanyProfile } from "../content/company-profile.ts";
+import { FIRST_WAVE_WEEK, type CompanyProfile } from "../content/company-profile.ts";
 import { trueMetricValue } from "./facts.ts";
 import { appendObservations, type ObservationLog } from "./observation.ts";
 
-export interface ObservationEntry {
+interface ObservationEntry {
   readonly observation: unknown;
   readonly provenance?: unknown;
 }
 
-export function applicationObservationId(companyId: string): string {
+function applicationObservationId(companyId: string): string {
   return `obs-${companyId}-application`;
 }
 
 /** The entries the applications received in `week` deliver, in pack order. */
-export function inboundApplicationEntries(profiles: readonly CompanyProfile[], week: number): ObservationEntry[] {
+function inboundApplicationEntries(profiles: readonly CompanyProfile[], week: number): ObservationEntry[] {
   return profiles.flatMap((profile) => {
     const application = profile.application;
-    if (application === undefined || application.receivedWeek !== week) return [];
+    if (application === undefined || week !== FIRST_WAVE_WEEK) return [];
     const textId = applicationObservationId(profile.id);
     const source = { kind: "founder", author: application.authorId };
     const text: ObservationEntry = {
@@ -32,7 +32,7 @@ export function inboundApplicationEntries(profiles: readonly CompanyProfile[], w
         observationId: textId,
         companyId: profile.id,
         source,
-        receivedWeek: application.receivedWeek,
+        receivedWeek: week,
         // The application as a whole describes the span its figures cover.
         period: {
           fromWeek: Math.min(...application.claims.map((c) => c.period.fromWeek)),
@@ -48,7 +48,7 @@ export function inboundApplicationEntries(profiles: readonly CompanyProfile[], w
           observationId: `${textId}-${kebab(claim.metric)}`,
           companyId: profile.id,
           source,
-          receivedWeek: application.receivedWeek,
+          receivedWeek: week,
           period: claim.period,
           content: { kind: "metric", metric: claim.metric, value: claim.value },
           references: [textId],
