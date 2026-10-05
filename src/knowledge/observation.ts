@@ -182,7 +182,12 @@ function checkObservation(value: unknown, path: string, log: ObservationLog, iss
   const companyId = readId(record, "companyId", path, issues);
   const source = readSource(record["source"], childPath(path, "source"), issues);
   const receivedWeek = readInteger(record, "receivedWeek", path, { min: 1 }, issues);
-  const period = readPeriod(record["period"], childPath(path, "period"), receivedWeek, issues);
+  const period = readPeriod(
+    record["period"],
+    childPath(path, "period"),
+    receivedWeek === undefined ? undefined : { week: receivedWeek, reason: `receivedWeek (${receivedWeek}): nobody reports on the future` },
+    issues,
+  );
   const content = readContent(record["content"], childPath(path, "content"), issues);
   const references = readReferences(record["references"], childPath(path, "references"), companyId, log, issues);
 
@@ -210,7 +215,13 @@ function readSource(value: unknown, path: string, issues: ContentIssue[]): Obser
   return kind === undefined || author === undefined ? undefined : { kind, author };
 }
 
-function readPeriod(value: unknown, path: string, receivedWeek: number | undefined, issues: ContentIssue[]): Period | undefined {
+/** A period ending no later than `latest.week` (when given); `latest.reason` explains the limit in issues. */
+export function readPeriod(
+  value: unknown,
+  path: string,
+  latest: { readonly week: number; readonly reason: string } | undefined,
+  issues: ContentIssue[],
+): Period | undefined {
   const record = readRecord(value, path, issues);
   if (record === undefined) return undefined;
   rejectUnknownKeys(record, ["fromWeek", "toWeek"], path, issues);
@@ -222,14 +233,45 @@ function readPeriod(value: unknown, path: string, receivedWeek: number | undefin
     issues.push({ path: childPath(path, "toWeek"), message: `must not be before fromWeek (${fromWeek}), got ${toWeek}` });
     return undefined;
   }
-  if (receivedWeek !== undefined && toWeek > receivedWeek) {
-    issues.push({
-      path: childPath(path, "toWeek"),
-      message: `must not be after receivedWeek (${receivedWeek}): nobody reports on the future, got ${toWeek}`,
-    });
+  if (latest !== undefined && toWeek > latest.week) {
+    issues.push({ path: childPath(path, "toWeek"), message: `must not be after ${latest.reason}, got ${toWeek}` });
     return undefined;
   }
   return { fromWeek, toWeek };
+}
+
+export function readDistortion(value: unknown, path: string, issues: ContentIssue[]): Distortion | undefined {
+  const record = readRecord(value, path, issues);
+  if (record === undefined) return undefined;
+  rejectUnknownKeys(record, ["reason", "note"], path, issues);
+  const reason = readEnum(record, "reason", path, DISTORTION_REASONS, issues);
+  const note = readText(record, "note", path, issues);
+  return reason === undefined || note === undefined ? undefined : { reason, note };
+}
+
+/** Bounds for a metric's value: only cash may be negative. */
+export function metricBounds(metric: Metric | undefined): { min: number; unit: string } {
+  return { min: metric === "cashCents" ? Number.MIN_SAFE_INTEGER : 0, unit: metric === undefined ? "units" : METRICS[metric] };
+}
+
+/**
+ * A gap between a claim and the truth always has a stated reason, and only a gap has
+ * one (§14.1). `subject` names the truth in the message, e.g. "the fact".
+ */
+export function checkDistortionMatchesGap(
+  claimed: number,
+  truth: number,
+  hasDistortion: boolean,
+  subject: string,
+  path: string,
+  issues: ContentIssue[],
+): void {
+  if (claimed !== truth && !hasDistortion) {
+    issues.push({ path, message: `is required: the claim states ${claimed} but ${subject} is ${truth} (§14.1)` });
+  }
+  if (claimed === truth && hasDistortion) {
+    issues.push({ path, message: `must be absent: the claim matches ${subject} (${truth})` });
+  }
 }
 
 function readContent(value: unknown, path: string, issues: ContentIssue[]): ObservationContent | undefined {
@@ -239,8 +281,7 @@ function readContent(value: unknown, path: string, issues: ContentIssue[]): Obse
   if (kind === "metric") {
     rejectUnknownKeys(record, ["kind", "metric", "value"], path, issues);
     const metric = readEnum(record, "metric", path, METRIC_NAMES, issues);
-    const min = metric === "cashCents" ? Number.MIN_SAFE_INTEGER : 0;
-    const value = readInteger(record, "value", path, { min, unit: metric === undefined ? "units" : METRICS[metric] }, issues);
+    const value = readInteger(record, "value", path, metricBounds(metric), issues);
     return metric === undefined || value === undefined ? undefined : { kind, metric, value };
   }
   if (kind === "text") {
@@ -297,35 +338,18 @@ function checkProvenance(
     const factRecord = readRecord(record["fact"], factPath, issues);
     if (factRecord !== undefined) {
       rejectUnknownKeys(factRecord, ["value"], factPath, issues);
-      const min = content.metric === "cashCents" ? Number.MIN_SAFE_INTEGER : 0;
-      const factValue = readInteger(factRecord, "value", factPath, { min, unit: METRICS[content.metric] }, issues);
+      const factValue = readInteger(factRecord, "value", factPath, metricBounds(content.metric), issues);
       if (factValue !== undefined) fact = { value: factValue };
     }
   } else if (record["fact"] !== undefined) {
     issues.push({ path: factPath, message: "only a metric observation has a fact value" });
   }
 
-  let distortion: Distortion | undefined;
   const distortionPath = childPath(path, "distortion");
-  if (record["distortion"] !== undefined) {
-    const distortionRecord = readRecord(record["distortion"], distortionPath, issues);
-    if (distortionRecord !== undefined) {
-      rejectUnknownKeys(distortionRecord, ["reason", "note"], distortionPath, issues);
-      const reason = readEnum(distortionRecord, "reason", distortionPath, DISTORTION_REASONS, issues);
-      const note = readText(distortionRecord, "note", distortionPath, issues);
-      if (reason !== undefined && note !== undefined) distortion = { reason, note };
-    }
-  }
-
-  // A gap between claim and truth always has a stated reason, and only a gap has one.
-  if (content.kind === "metric" && fact !== undefined && record["distortion"] === undefined && fact.value !== content.value) {
-    issues.push({
-      path: distortionPath,
-      message: `is required: the observation states ${content.value} but the fact is ${fact.value} (§14.1)`,
-    });
-  }
-  if (content.kind === "metric" && fact !== undefined && distortion !== undefined && fact.value === content.value) {
-    issues.push({ path: distortionPath, message: `must be absent: the stated value equals the fact (${fact.value})` });
+  const hasDistortion = record["distortion"] !== undefined;
+  const distortion = hasDistortion ? readDistortion(record["distortion"], distortionPath, issues) : undefined;
+  if (content.kind === "metric" && fact !== undefined) {
+    checkDistortionMatchesGap(content.value, fact.value, hasDistortion, "the fact", distortionPath, issues);
   }
 
   if (issues.length > start) return undefined;

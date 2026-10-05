@@ -126,12 +126,12 @@ test("a gap between claim and fact needs a structured reason, and only a gap has
   const noReason = structuredClone(CLAIM) as { observation: unknown; provenance: Record<string, unknown> };
   delete noReason.provenance["distortion"];
   assert.deepEqual(issuesOf(log, noReason), [
-    "provenance.distortion: is required: the observation states 12 but the fact is 4 (§14.1)",
+    "provenance.distortion: is required: the claim states 12 but the fact is 4 (§14.1)",
   ]);
   const needless = structuredClone(CHECK) as { observation: Record<string, unknown>; provenance: Record<string, unknown> };
   needless.observation["references"] = [];
   needless.provenance["distortion"] = { reason: "honest-mistake", note: "none really" };
-  assert.deepEqual(issuesOf(log, needless), ["provenance.distortion: must be absent: the stated value equals the fact (4)"]);
+  assert.deepEqual(issuesOf(log, needless), ["provenance.distortion: must be absent: the claim matches the fact (4)"]);
   const noFact = structuredClone(CHECK) as { observation: Record<string, unknown>; provenance: Record<string, unknown> };
   noFact.observation["references"] = [];
   delete noFact.provenance["fact"];
@@ -235,27 +235,13 @@ test("two checks that disagree are both conflicting evidence", () => {
   assert.equal(verificationStatus(log.observations[3]!, log.observations, 3), "conflicting-evidence");
 });
 
-test("comparing two figures shows both values, periods and sources", () => {
+test("comparing two figures gives their difference and whether the periods overlap", () => {
   const log = logOf(APPLICATION, CLAIM, CHECK);
   const [, claim, check] = log.observations as [unknown, (typeof log.observations)[number], (typeof log.observations)[number]];
   const comparison = compareObservations(check, claim);
   assert.deepEqual(comparison, {
     companyId: COMPANY,
     metric: "payingCustomers",
-    earlier: {
-      observationId: "obs-alpha-claim-customers",
-      value: 12,
-      period: { fromWeek: 0, toWeek: 0 },
-      source: { kind: "founder", author: "fd-fixture-alpha-1" },
-      receivedWeek: 1,
-    },
-    later: {
-      observationId: "obs-alpha-check-customers",
-      value: 4,
-      period: { fromWeek: 0, toWeek: 2 },
-      source: { kind: "check", author: "customer research" },
-      receivedWeek: 3,
-    },
     difference: -8,
     samePeriod: true,
   });

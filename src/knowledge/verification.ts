@@ -7,16 +7,14 @@
 // any figure becomes a "stale period" once it is old. Only player-facing records are
 // read here; provenance never influences a status.
 
-import type { Metric, Observation, ObservationSource, Period, SourceKind } from "./observation.ts";
+import type { Metric, Observation, Period, SourceKind } from "./observation.ts";
 
-export const VERIFICATION_STATUSES = [
-  "founder-claim",
-  "public-source",
-  "confirmed-by-check",
-  "conflicting-evidence",
-  "stale-period",
-] as const;
-export type VerificationStatus = (typeof VERIFICATION_STATUSES)[number];
+export type VerificationStatus =
+  | "founder-claim"
+  | "public-source"
+  | "confirmed-by-check"
+  | "conflicting-evidence"
+  | "stale-period";
 
 /**
  * A figure whose period ended more than this many weeks before the current week is
@@ -53,7 +51,7 @@ export function verificationStatus(
 }
 
 /** Other metric observations of the same company and metric whose period overlaps and whose value differs. */
-export function conflictingObservations(observation: Observation, known: readonly Observation[]): Observation[] {
+function conflictingObservations(observation: Observation, known: readonly Observation[]): Observation[] {
   const { content } = observation;
   if (content.kind !== "metric") return [];
   return known.filter(
@@ -67,29 +65,20 @@ export function conflictingObservations(observation: Observation, known: readonl
   );
 }
 
-export interface ComparedFigure {
-  readonly observationId: string;
-  readonly value: number;
-  readonly period: Period;
-  readonly source: ObservationSource;
-  readonly receivedWeek: number;
-}
-
 export interface ObservationComparison {
   readonly companyId: string;
   readonly metric: Metric;
-  /** The figure about the earlier period (ties: received earlier, then id). */
-  readonly earlier: ComparedFigure;
-  readonly later: ComparedFigure;
-  /** later.value − earlier.value, in the metric's unit. */
+  /**
+   * The later figure's value minus the earlier one's, in the metric's unit. Later means
+   * the later period (ties: received later, then id), so argument order does not matter.
+   */
   readonly difference: number;
   /** Whether the two periods overlap, i.e. the figures describe the same time. */
   readonly samePeriod: boolean;
 }
 
 /**
- * Compares two figures of the same metric about the same company, showing both values,
- * periods and sources. Throws for anything else: comparing different metrics or
+ * Compares two figures of the same metric about the same company. Throws for anything else: comparing different metrics or
  * companies has no meaning, so it is a caller bug.
  */
 export function compareObservations(a: Observation, b: Observation): ObservationComparison {
@@ -101,22 +90,11 @@ export function compareObservations(a: Observation, b: Observation): Observation
       `cannot compare ${a.companyId}/${a.content.metric} with ${b.companyId}/${b.content.metric}: same company and metric only`,
     );
   }
-  const [earlier, later] = order(a, b) <= 0 ? [a, b] : [b, a];
-  const figure = (o: Observation): ComparedFigure => ({
-    observationId: o.observationId,
-    value: o.content.kind === "metric" ? o.content.value : 0,
-    period: o.period,
-    source: o.source,
-    receivedWeek: o.receivedWeek,
-  });
-  const first = figure(earlier);
-  const second = figure(later);
+  const difference = b.content.value - a.content.value;
   return {
     companyId: a.companyId,
     metric: a.content.metric,
-    earlier: first,
-    later: second,
-    difference: second.value - first.value,
+    difference: order(a, b) <= 0 ? difference : -difference,
     samePeriod: overlaps(a.period, b.period),
   };
 }
