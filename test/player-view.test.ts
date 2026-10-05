@@ -26,44 +26,24 @@ function start(pack: Json = gammaPack()): Campaign {
 }
 
 /**
- * The campaign with observations in its log. Delivery rules arrive with VI-18; here the
- * log is filled directly so the view can be tested on its own. One observation is
- * about Rampa, which the player does not know: the view must still hide it.
+ * The campaign as delivered (the week 1 applications), plus one observation about
+ * Rampa, which the player does not know. It cannot be delivered that way yet; it is
+ * appended directly to prove that the view hides unknown companies whatever the log holds.
  */
 function withObservations(campaign: Campaign): Campaign {
-  const founderClaim = (id: string, companyId: string, author: string, metric: string, value: number, fact: number, distortion?: object) => ({
-    observation: {
-      observationId: id,
-      companyId,
-      source: { kind: "founder", author },
-      receivedWeek: 1,
-      period: { fromWeek: 0, toWeek: 0 },
-      content: { kind: "metric", metric, value },
-      references: [],
-    },
-    provenance: { fact: { value: fact }, ...(distortion === undefined ? {} : { distortion }) },
-  });
   const result = appendObservations(campaign.state.observations, [
     {
       observation: {
-        observationId: "obs-tracebench-application",
-        companyId: "co-tracebench",
-        source: { kind: "founder", author: "fd-ostap-hnatiuk" },
+        observationId: "obs-rampa-customers",
+        companyId: "co-rampa",
+        source: { kind: "founder", author: "fd-andrii-savchuk" },
         receivedWeek: 1,
         period: { fromWeek: 0, toWeek: 0 },
-        content: { kind: "text", title: "Пошук нестабільних тестів у CI", text: "Tracebench знаходить нестабільні тести в CI." },
+        content: { kind: "metric", metric: "payingCustomers", value: 11 },
         references: [],
       },
+      provenance: { fact: { value: 11 } },
     },
-    founderClaim("obs-tracebench-customers", "co-tracebench", "fd-ostap-hnatiuk", "payingCustomers", 19, 7, {
-      reason: "counts-pilots-as-paying",
-      note: "12 free pilots counted as paying",
-    }),
-    founderClaim("obs-papirflow-burn", "co-papirflow", "fd-taras-kovalenko", "weeklyBurnCents", 920_000, 2_060_000, {
-      reason: "excludes-contractor-costs",
-      note: "contract developers booked as project cost",
-    }),
-    founderClaim("obs-rampa-customers", "co-rampa", "fd-andrii-savchuk", "payingCustomers", 11, 11),
   ]);
   assert.ok(result.ok, result.ok ? "" : JSON.stringify(result.issues));
   return Object.freeze({ ...campaign, state: Object.freeze({ ...campaign.state, observations: result.log }) });
@@ -95,8 +75,10 @@ test("the player view lists the identified companies with their observations and
   assert.deepEqual(
     tracebench?.observations.map((o) => [o.observationId, o.source.author, o.receivedWeek, o.period.toWeek, o.status]),
     [
-      ["obs-tracebench-application", "fd-ostap-hnatiuk", 1, 0, "founder-claim"],
-      ["obs-tracebench-customers", "fd-ostap-hnatiuk", 1, 0, "founder-claim"],
+      ["obs-co-tracebench-application", "fd-ostap-hnatiuk", 1, 0, "founder-claim"],
+      ["obs-co-tracebench-application-paying-customers", "fd-ostap-hnatiuk", 1, 0, "founder-claim"],
+      ["obs-co-tracebench-application-weekly-revenue-cents", "fd-ostap-hnatiuk", 1, 0, "founder-claim"],
+      ["obs-co-tracebench-application-team-size", "fd-ostap-hnatiuk", 1, 0, "founder-claim"],
     ],
   );
   assert.deepEqual(
@@ -139,8 +121,9 @@ test("the serialized player view has no hidden-state keys or values", () => {
   const json = canonicalJson(view);
   const debugOnly = [
     "counts-pilots-as-paying",
-    "free pilots",
+    "free extended pilot",
     "excludes-contractor-costs",
+    "optimistic-founder-claim",
     "open-core",
     "Trade-off",
     "operating",
@@ -222,7 +205,7 @@ test("the debug view shows every company with hidden state, provenance and lifec
   assert.equal(tracebench?.profile.hidden.productFit, 71);
   assert.equal(tracebench?.trueMetrics.payingCustomers, 7);
   assert.equal(papirflow?.trueMetrics.weeklyBurnCents, 2_060_000);
-  const claim = tracebench?.observations.find((o) => o.observation.observationId === "obs-tracebench-customers");
+  const claim = tracebench?.observations.find((o) => o.observation.observationId === "obs-co-tracebench-application-paying-customers");
   assert.equal(claim?.provenance?.distortion?.reason, "counts-pilots-as-paying");
   assert.equal(claim?.status, "founder-claim");
   assert.ok(Object.isFrozen(debug.companies[0]?.profile.hidden));
