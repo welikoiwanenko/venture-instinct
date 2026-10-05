@@ -19,7 +19,6 @@
         ],
         "initialKnowledge": "inbound",
         "application": {
-          "receivedWeek": 1,
           "authorId": "fd-fixture-alpha-1",
           "summary": "Placeholder application summary.",
           "text": "Placeholder application text used to test the schema.",
@@ -70,7 +69,6 @@
         ],
         "initialKnowledge": "inbound",
         "application": {
-          "receivedWeek": 1,
           "authorId": "fd-fixture-alpha-1",
           "summary": "Placeholder application summary.",
           "text": "Placeholder application text used to test the schema.",

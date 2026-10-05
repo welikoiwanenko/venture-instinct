@@ -10,9 +10,11 @@
 import { BASIS_POINTS_WHOLE } from "../campaign/shares.ts";
 import { trueMetricValue } from "../knowledge/facts.ts";
 import {
-  DISTORTION_REASONS,
+  checkDistortionMatchesGap,
   METRIC_NAMES,
-  METRICS,
+  metricBounds,
+  readDistortion,
+  readPeriod,
   type Distortion,
   type Metric,
   type Period,
@@ -96,7 +98,7 @@ export interface HiddenStartingState {
   readonly strategy: FounderStrategy;
 }
 
-/** The week the first inbound wave arrives (§5). Gamma delivers only this wave. */
+/** The week the first inbound wave arrives (§5). Every application belongs to it so far. */
 export const FIRST_WAVE_WEEK = 1;
 
 /** One figure an application states, e.g. paying customers as of week 0. */
@@ -118,7 +120,6 @@ export interface ApplicationClaim {
  * week 0, whatever period they name.
  */
 export interface InboundApplication {
-  readonly receivedWeek: number;
   /** The founder who wrote it. */
   readonly authorId: string;
   /** Short form: one line for lists. Player-facing language. */
@@ -157,7 +158,7 @@ const COMPANY_KEYS = [
   "hidden",
   "authoringNote",
 ] as const;
-const APPLICATION_KEYS = ["receivedWeek", "authorId", "summary", "text", "claims"] as const;
+const APPLICATION_KEYS = ["authorId", "summary", "text", "claims"] as const;
 const CLAIM_KEYS = ["metric", "value", "period", "distortion"] as const;
 const FOUNDER_KEYS = ["id", "name", "specialization"] as const;
 const HIDDEN_KEYS = [
@@ -206,7 +207,8 @@ export function isForbiddenField(key: string): boolean {
 const FORBIDDEN_MESSAGE =
   "is forbidden: a profile sets starting conditions, not a quality score, winner flag, exit or outcome (§3.1, §10.1)";
 
-const MAX_SAFE = BigInt(Number.MAX_SAFE_INTEGER);
+/** Claims describe the time before the campaign: week 0 and earlier. */
+const BEFORE_CAMPAIGN = { week: 0, reason: "week 0: a claim describes the time before the campaign" };
 
 const ECONOMICS_HINT = "§10.3 cannot simulate the company without it";
 
@@ -279,13 +281,6 @@ function readApplication(
   if (record === undefined) return undefined;
   rejectUnknownKeys(record, APPLICATION_KEYS, path, issues, isForbiddenField);
 
-  const receivedWeek = readInteger(record, "receivedWeek", path, { min: 1 }, issues);
-  if (receivedWeek !== undefined && receivedWeek !== FIRST_WAVE_WEEK) {
-    issues.push({
-      path: childPath(path, "receivedWeek"),
-      message: `must be ${FIRST_WAVE_WEEK}: only the first inbound wave exists so far, got ${receivedWeek}`,
-    });
-  }
   const authorId = readId(record, "authorId", path, issues);
   if (authorId !== undefined && founders !== undefined && !founders.some((f) => f.id === authorId)) {
     issues.push({ path: childPath(path, "authorId"), message: `${JSON.stringify(authorId)} is not a founder of this company` });
@@ -296,7 +291,6 @@ function readApplication(
 
   if (
     issues.length > start ||
-    receivedWeek === undefined ||
     authorId === undefined ||
     summary === undefined ||
     text === undefined ||
@@ -304,7 +298,7 @@ function readApplication(
   ) {
     return undefined;
   }
-  return { receivedWeek, authorId, summary, text, claims };
+  return { authorId, summary, text, claims };
 }
 
 function readClaims(
@@ -331,59 +325,20 @@ function readClaims(
       if (seen.has(metric)) issues.push({ path: childPath(itemPath, "metric"), message: `${metric} is already stated` });
       seen.add(metric);
     }
-    const unit = metric === undefined ? undefined : METRICS[metric];
-    const claimed = readInteger(
-      record,
-      "value",
-      itemPath,
-      { min: metric === "cashCents" ? Number.MIN_SAFE_INTEGER : 0, ...(unit === undefined ? {} : { unit }) },
-      issues,
-    );
-    const period = readClaimPeriod(record["period"], childPath(itemPath, "period"), issues);
+    const claimed = readInteger(record, "value", itemPath, metricBounds(metric), issues);
+    const period = readPeriod(record["period"], childPath(itemPath, "period"), BEFORE_CAMPAIGN, issues);
     const distortionPath = childPath(itemPath, "distortion");
     const distortion = record["distortion"] === undefined ? undefined : readDistortion(record["distortion"], distortionPath, issues);
 
     if (metric !== undefined && claimed !== undefined && hidden !== undefined) {
       const truth = trueMetricValue(hidden, metric);
-      if (claimed !== truth && record["distortion"] === undefined) {
-        issues.push({
-          path: distortionPath,
-          message: `is required: the claim states ${claimed} but the hidden state gives ${truth} (§14.1)`,
-        });
-      }
-      if (claimed === truth && record["distortion"] !== undefined) {
-        issues.push({ path: distortionPath, message: `must be absent: the claim matches the hidden state (${truth})` });
-      }
+      checkDistortionMatchesGap(claimed, truth, record["distortion"] !== undefined, "the hidden state", distortionPath, issues);
     }
     return metric === undefined || claimed === undefined || period === undefined
       ? undefined
       : { metric, value: claimed, period, ...(distortion === undefined ? {} : { distortion }) };
   });
   return issues.length > start || claims.some((c) => c === undefined) ? undefined : (claims as ApplicationClaim[]);
-}
-
-function readClaimPeriod(value: unknown, path: string, issues: ContentIssue[]): Period | undefined {
-  const record = readRecord(value, path, issues);
-  if (record === undefined) return undefined;
-  rejectUnknownKeys(record, ["fromWeek", "toWeek"], path, issues);
-  const weeks = { min: -520, max: 0 };
-  const fromWeek = readInteger(record, "fromWeek", path, weeks, issues, "every claimed figure names its period");
-  const toWeek = readInteger(record, "toWeek", path, weeks, issues, "every claimed figure names its period");
-  if (fromWeek === undefined || toWeek === undefined) return undefined;
-  if (toWeek < fromWeek) {
-    issues.push({ path: childPath(path, "toWeek"), message: `must not be before fromWeek (${fromWeek}), got ${toWeek}` });
-    return undefined;
-  }
-  return { fromWeek, toWeek };
-}
-
-function readDistortion(value: unknown, path: string, issues: ContentIssue[]): Distortion | undefined {
-  const record = readRecord(value, path, issues);
-  if (record === undefined) return undefined;
-  rejectUnknownKeys(record, ["reason", "note"], path, issues);
-  const reason = readEnum(record, "reason", path, DISTORTION_REASONS, issues);
-  const note = readText(record, "note", path, issues);
-  return reason === undefined || note === undefined ? undefined : { reason, note };
 }
 
 function reportForbiddenFields(value: unknown, path: string, issues: ContentIssue[]): void {
@@ -475,29 +430,17 @@ function readHidden(
     }
   }
   // Values derived from several fields (§9.1 true metrics, §10.3 simulation) must stay
-  // exact too, so their sums and products are checked with BigInt before use.
+  // exact too; any sum or product past the safe range is itself not a safe integer.
+  const unsafe = (value: number, message: string, at: string): void => {
+    if (!Number.isSafeInteger(value)) issues.push({ path: childPath(path, at), message: `${message} is beyond the safe-integer range` });
+  };
   if (payingCustomers !== undefined && weeklyPriceCents !== undefined) {
-    const revenue = BigInt(payingCustomers) * BigInt(weeklyPriceCents);
-    if (revenue > MAX_SAFE) {
-      issues.push({
-        path: childPath(path, "weeklyPriceCents"),
-        message: `× ${payingCustomers} paying customers gives weekly revenue of ${revenue} cents, beyond the safe-integer range`,
-      });
-    }
+    unsafe(payingCustomers * weeklyPriceCents, "weekly revenue (paying customers × weekly price)", "weeklyPriceCents");
   }
   if (team !== undefined) {
-    const people = team.reduce((sum, line) => sum + BigInt(line.headcount), 0n);
-    if (people > MAX_SAFE) {
-      issues.push({ path: childPath(path, "team"), message: `total headcount ${people} is beyond the safe-integer range` });
-    }
+    unsafe(team.reduce((sum, line) => sum + line.headcount, 0), "total headcount", "team");
     if (otherWeeklyCostsCents !== undefined) {
-      const costs = team.reduce((sum, line) => sum + BigInt(line.weeklyCostCents), BigInt(otherWeeklyCostsCents));
-      if (costs > MAX_SAFE) {
-        issues.push({
-          path: childPath(path, "team"),
-          message: `weekly costs with otherWeeklyCostsCents total ${costs} cents, beyond the safe-integer range`,
-        });
-      }
+      unsafe(team.reduce((sum, line) => sum + line.weeklyCostCents, otherWeeklyCostsCents), "weekly costs with otherWeeklyCostsCents", "team");
     }
   }
   if (team !== undefined && founders !== undefined) {

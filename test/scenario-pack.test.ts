@@ -343,20 +343,19 @@ test("application claims name a period, come from a founder and explain every ga
   const claim = `${app}.claims[0]`;
   const table: Array<[(c: Json) => void, ContentIssue[]]> = [
     [(c) => (c["application"]["authorId"] = "fd-someone-else"), [{ path: `${app}.authorId`, message: '"fd-someone-else" is not a founder of this company' }]],
-    [(c) => (c["application"]["receivedWeek"] = 3), [{ path: `${app}.receivedWeek`, message: "must be 1: only the first inbound wave exists so far, got 3" }]],
     [(c) => (c["application"]["claims"] = []), [{ path: `${app}.claims`, message: "must state at least one figure with its period (§8.1)" }]],
     [(c) => delete c["application"]["claims"][0]["period"], [{ path: `${claim}.period`, message: "is required" }]],
     [
       (c) => delete c["application"]["claims"][0]["period"]["toWeek"],
-      [{ path: `${claim}.period.toWeek`, message: "is required: every claimed figure names its period" }],
+      [{ path: `${claim}.period.toWeek`, message: "is required" }],
     ],
     [
       (c) => (c["application"]["claims"][0]["period"] = { fromWeek: 0, toWeek: 1 }),
-      [{ path: `${claim}.period.toWeek`, message: "must be between -520 and 0, got 1" }],
+      [{ path: `${claim}.period.toWeek`, message: "must not be after week 0: a claim describes the time before the campaign, got 1" }],
     ],
     [
       (c) => (c["application"]["claims"][0]["value"] = 9),
-      [{ path: `${claim}.distortion`, message: "is required: the claim states 9 but the hidden state gives 4 (§14.1)" }],
+      [{ path: `${claim}.distortion`, message: "is required: the claim states 9 but the hidden state is 4 (§14.1)" }],
     ],
     [
       (c) => (c["application"]["claims"][0]["distortion"] = { reason: "honest-mistake", note: "n" }),
@@ -383,11 +382,11 @@ test("derived revenue, costs and headcount must stay within the safe-integer ran
   const max = Number.MAX_SAFE_INTEGER;
   const revenue = issuesOf(edit((c) => (c["hidden"]["weeklyPriceCents"] = max)));
   assert.deepEqual(revenue.map((i) => i.path), [`${COMPANY}.hidden.weeklyPriceCents`]);
-  assert.match(revenue[0]?.message ?? "", /× 4 paying customers gives weekly revenue of 36028797018963964 cents, beyond the safe-integer range/);
+  assert.match(revenue[0]?.message ?? "", /weekly revenue .* is beyond the safe-integer range/);
 
   const costs = issuesOf(edit((c) => (c["hidden"]["otherWeeklyCostsCents"] = max)));
   assert.deepEqual(costs, [
-    { path: `${COMPANY}.hidden.team`, message: `weekly costs with otherWeeklyCostsCents total ${BigInt(max) + 600000n} cents, beyond the safe-integer range` },
+    { path: `${COMPANY}.hidden.team`, message: "weekly costs with otherWeeklyCostsCents is beyond the safe-integer range" },
   ]);
 
   const people = issuesOf(
@@ -395,5 +394,5 @@ test("derived revenue, costs and headcount must stay within the safe-integer ran
       c["hidden"]["team"].push({ specialization: "sales", headcount: max, weeklyCostCents: 0, productivityBps: 10000 });
     }),
   );
-  assert.deepEqual(people, [{ path: `${COMPANY}.hidden.team`, message: `total headcount ${BigInt(max) + 2n} is beyond the safe-integer range` }]);
+  assert.deepEqual(people, [{ path: `${COMPANY}.hidden.team`, message: "total headcount is beyond the safe-integer range" }]);
 });
