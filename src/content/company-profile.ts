@@ -8,6 +8,17 @@
 // product fit on the 0–100 scale of §10.3.
 
 import { BASIS_POINTS_WHOLE } from "../campaign/shares.ts";
+import { trueMetricValue } from "../knowledge/facts.ts";
+import {
+  checkDistortionMatchesGap,
+  METRIC_NAMES,
+  metricBounds,
+  readDistortion,
+  readPeriod,
+  type Distortion,
+  type Metric,
+  type Period,
+} from "../knowledge/observation.ts";
 import {
   childPath,
   readArray,
@@ -87,6 +98,37 @@ export interface HiddenStartingState {
   readonly strategy: FounderStrategy;
 }
 
+/** The week the first inbound wave arrives (§5). Every application belongs to it so far. */
+export const FIRST_WAVE_WEEK = 1;
+
+/** One figure an application states, e.g. paying customers as of week 0. */
+export interface ApplicationClaim {
+  readonly metric: Metric;
+  readonly value: number;
+  /** Weeks before the campaign: 0 is the last week before it started. */
+  readonly period: Period;
+  /**
+   * Why the figure differs from the hidden state (§14.1). Required exactly when it does;
+   * internal, never delivered to the player.
+   */
+  readonly distortion?: Distortion;
+}
+
+/**
+ * An inbound application (§8.1): delivered to the player as observations from its
+ * author. Claims are measured against the hidden starting state, i.e. the truth as of
+ * week 0, whatever period they name.
+ */
+export interface InboundApplication {
+  /** The founder who wrote it. */
+  readonly authorId: string;
+  /** Short form: one line for lists. Player-facing language. */
+  readonly summary: string;
+  /** Expanded form: the application as written. Player-facing language. */
+  readonly text: string;
+  readonly claims: readonly ApplicationClaim[];
+}
+
 export interface CompanyProfile {
   readonly id: string;
   /** Public name. */
@@ -97,6 +139,8 @@ export interface CompanyProfile {
   readonly description: string;
   readonly founders: readonly FounderProfile[];
   readonly initialKnowledge: InitialKnowledge;
+  /** Present exactly for inbound companies. */
+  readonly application?: InboundApplication;
   readonly hidden: HiddenStartingState;
   /** Why this company is in the pack and what its trade-off is. Authors and debug only. */
   readonly authoringNote?: string;
@@ -110,9 +154,12 @@ const COMPANY_KEYS = [
   "description",
   "founders",
   "initialKnowledge",
+  "application",
   "hidden",
   "authoringNote",
 ] as const;
+const APPLICATION_KEYS = ["authorId", "summary", "text", "claims"] as const;
+const CLAIM_KEYS = ["metric", "value", "period", "distortion"] as const;
 const FOUNDER_KEYS = ["id", "name", "specialization"] as const;
 const HIDDEN_KEYS = [
   "cashCents",
@@ -160,6 +207,9 @@ export function isForbiddenField(key: string): boolean {
 const FORBIDDEN_MESSAGE =
   "is forbidden: a profile sets starting conditions, not a quality score, winner flag, exit or outcome (§3.1, §10.1)";
 
+/** Claims describe the time before the campaign: week 0 and earlier. */
+const BEFORE_CAMPAIGN = { week: 0, reason: "week 0: a claim describes the time before the campaign" };
+
 const ECONOMICS_HINT = "§10.3 cannot simulate the company without it";
 
 /** Validates one company. `path` names it in issues, e.g. "scenario.content.companies[0]". */
@@ -178,6 +228,7 @@ export function checkCompanyProfile(value: unknown, path: string, issues: Conten
   const founders = readFounders(record["founders"], childPath(path, "founders"), issues);
   const initialKnowledge = readEnum(record, "initialKnowledge", path, INITIAL_KNOWLEDGE, issues);
   const hidden = readHidden(record["hidden"], childPath(path, "hidden"), founders, issues);
+  const application = readApplication(record["application"], childPath(path, "application"), initialKnowledge, founders, hidden, issues);
   const authoringNote = record["authoringNote"] === undefined ? undefined : readText(record, "authoringNote", path, issues);
 
   if (
@@ -201,9 +252,93 @@ export function checkCompanyProfile(value: unknown, path: string, issues: Conten
     description,
     founders,
     initialKnowledge,
+    ...(application === undefined ? {} : { application }),
     hidden,
     ...(authoringNote === undefined ? {} : { authoringNote }),
   };
+}
+
+function readApplication(
+  value: unknown,
+  path: string,
+  initialKnowledge: InitialKnowledge | undefined,
+  founders: readonly FounderProfile[] | undefined,
+  hidden: HiddenStartingState | undefined,
+  issues: ContentIssue[],
+): InboundApplication | undefined {
+  if (initialKnowledge === "unknown") {
+    if (value !== undefined) {
+      issues.push({ path, message: "must be absent: the player has not heard of a company that starts unknown" });
+    }
+    return undefined;
+  }
+  if (initialKnowledge === "inbound" && value === undefined) {
+    issues.push({ path, message: `is required: an inbound company applied in the week ${FIRST_WAVE_WEEK} wave (§8.1)` });
+    return undefined;
+  }
+  const start = issues.length;
+  const record = readRecord(value, path, issues);
+  if (record === undefined) return undefined;
+  rejectUnknownKeys(record, APPLICATION_KEYS, path, issues, isForbiddenField);
+
+  const authorId = readId(record, "authorId", path, issues);
+  if (authorId !== undefined && founders !== undefined && !founders.some((f) => f.id === authorId)) {
+    issues.push({ path: childPath(path, "authorId"), message: `${JSON.stringify(authorId)} is not a founder of this company` });
+  }
+  const summary = readText(record, "summary", path, issues);
+  const text = readText(record, "text", path, issues);
+  const claims = readClaims(record["claims"], childPath(path, "claims"), hidden, issues);
+
+  if (
+    issues.length > start ||
+    authorId === undefined ||
+    summary === undefined ||
+    text === undefined ||
+    claims === undefined
+  ) {
+    return undefined;
+  }
+  return { authorId, summary, text, claims };
+}
+
+function readClaims(
+  value: unknown,
+  path: string,
+  hidden: HiddenStartingState | undefined,
+  issues: ContentIssue[],
+): ApplicationClaim[] | undefined {
+  const items = readArray(value, path, issues);
+  if (items === undefined) return undefined;
+  if (items.length === 0) {
+    issues.push({ path, message: "must state at least one figure with its period (§8.1)" });
+    return undefined;
+  }
+  const start = issues.length;
+  const seen = new Set<Metric>();
+  const claims = items.map((item, index) => {
+    const itemPath = childPath(path, index);
+    const record = readRecord(item, itemPath, issues);
+    if (record === undefined) return undefined;
+    rejectUnknownKeys(record, CLAIM_KEYS, itemPath, issues, isForbiddenField);
+    const metric = readEnum(record, "metric", itemPath, METRIC_NAMES, issues);
+    if (metric !== undefined) {
+      if (seen.has(metric)) issues.push({ path: childPath(itemPath, "metric"), message: `${metric} is already stated` });
+      seen.add(metric);
+    }
+    const claimed = readInteger(record, "value", itemPath, metricBounds(metric), issues);
+    const period = readPeriod(record["period"], childPath(itemPath, "period"), BEFORE_CAMPAIGN, issues);
+    const distortionPath = childPath(itemPath, "distortion");
+    const distortion = record["distortion"] === undefined ? undefined : readDistortion(record["distortion"], distortionPath, issues);
+
+    if (metric !== undefined && claimed !== undefined && hidden !== undefined) {
+      const truth = trueMetricValue(hidden, metric);
+      checkDistortionMatchesGap(claimed, truth, record["distortion"] !== undefined, "the hidden state", distortionPath, issues);
+    }
+    return metric === undefined || claimed === undefined || period === undefined
+      ? undefined
+      : { metric, value: claimed, period, ...(distortion === undefined ? {} : { distortion }) };
+  });
+  return issues.length > start || claims.some((c) => c === undefined) ? undefined : (claims as ApplicationClaim[]);
 }
 
 function reportForbiddenFields(value: unknown, path: string, issues: ContentIssue[]): void {
@@ -224,10 +359,10 @@ function reportForbiddenFields(value: unknown, path: string, issues: ContentIssu
 function readFounders(value: unknown, path: string, issues: ContentIssue[]): FounderProfile[] | undefined {
   const items = readArray(value, path, issues);
   if (items === undefined) return undefined;
+  const start = issues.length;
   if (items.length < 1 || items.length > 3) {
     issues.push({ path, message: `must list 1 to 3 founders, got ${items.length}` });
   }
-  const start = issues.length;
   const founders = items.map((item, index) => {
     const itemPath = childPath(path, index);
     const record = readRecord(item, itemPath, issues);
@@ -292,6 +427,20 @@ function readHidden(
         path: childPath(path, "largestCustomerShareBps"),
         message: `the largest of ${payingCustomers} customers has at least ${floor} basis points, got ${largestCustomerShareBps}`,
       });
+    }
+  }
+  // Values derived from several fields (§9.1 true metrics, §10.3 simulation) must stay
+  // exact too; any sum or product past the safe range is itself not a safe integer.
+  const unsafe = (value: number, message: string, at: string): void => {
+    if (!Number.isSafeInteger(value)) issues.push({ path: childPath(path, at), message: `${message} is beyond the safe-integer range` });
+  };
+  if (payingCustomers !== undefined && weeklyPriceCents !== undefined) {
+    unsafe(payingCustomers * weeklyPriceCents, "weekly revenue (paying customers × weekly price)", "weeklyPriceCents");
+  }
+  if (team !== undefined) {
+    unsafe(team.reduce((sum, line) => sum + line.headcount, 0), "total headcount", "team");
+    if (otherWeeklyCostsCents !== undefined) {
+      unsafe(team.reduce((sum, line) => sum + line.weeklyCostCents, otherWeeklyCostsCents), "weekly costs with otherWeeklyCostsCents", "team");
     }
   }
   if (team !== undefined && founders !== undefined) {

@@ -320,3 +320,79 @@ test("the validated pack is independent of its input", () => {
   input["content"]["companies"][0]["hidden"]["cashCents"] = 1;
   assert.equal(result.pack.content.companies[0]?.hidden.cashCents, 10_000_000);
 });
+
+test("inbound companies have an application; unknown companies have none", () => {
+  const app = `${COMPANY}.application`;
+  assert.deepEqual(issuesOf(edit((c) => delete c["application"])), [
+    { path: app, message: "is required: an inbound company applied in the week 1 wave (§8.1)" },
+  ]);
+  assert.deepEqual(issuesOf(edit((c) => (c["initialKnowledge"] = "unknown"))), [
+    { path: app, message: "must be absent: the player has not heard of a company that starts unknown" },
+  ]);
+  const unknown = validateScenarioPack(
+    edit((c) => {
+      c["initialKnowledge"] = "unknown";
+      delete c["application"];
+    }),
+  );
+  assert.ok(unknown.ok);
+});
+
+test("application claims name a period, come from a founder and explain every gap", () => {
+  const app = `${COMPANY}.application`;
+  const claim = `${app}.claims[0]`;
+  const table: Array<[(c: Json) => void, ContentIssue[]]> = [
+    [(c) => (c["application"]["authorId"] = "fd-someone-else"), [{ path: `${app}.authorId`, message: '"fd-someone-else" is not a founder of this company' }]],
+    [(c) => (c["application"]["claims"] = []), [{ path: `${app}.claims`, message: "must state at least one figure with its period (§8.1)" }]],
+    [(c) => delete c["application"]["claims"][0]["period"], [{ path: `${claim}.period`, message: "is required" }]],
+    [
+      (c) => delete c["application"]["claims"][0]["period"]["toWeek"],
+      [{ path: `${claim}.period.toWeek`, message: "is required" }],
+    ],
+    [
+      (c) => (c["application"]["claims"][0]["period"] = { fromWeek: 0, toWeek: 1 }),
+      [{ path: `${claim}.period.toWeek`, message: "must not be after week 0: a claim describes the time before the campaign, got 1" }],
+    ],
+    [
+      (c) => (c["application"]["claims"][0]["value"] = 9),
+      [{ path: `${claim}.distortion`, message: "is required: the claim states 9 but the hidden state is 4 (§14.1)" }],
+    ],
+    [
+      (c) => (c["application"]["claims"][0]["distortion"] = { reason: "honest-mistake", note: "n" }),
+      [{ path: `${claim}.distortion`, message: "must be absent: the claim matches the hidden state (4)" }],
+    ],
+    [
+      (c) => c["application"]["claims"].push({ metric: "payingCustomers", value: 4, period: { fromWeek: 0, toWeek: 0 } }),
+      [{ path: `${app}.claims[1].metric`, message: "payingCustomers is already stated" }],
+    ],
+  ];
+  for (const [change, expected] of table) {
+    assert.deepEqual(issuesOf(edit(change)), expected);
+  }
+  const explained = validateScenarioPack(
+    edit((c) => {
+      c["application"]["claims"][0]["value"] = 9;
+      c["application"]["claims"][0]["distortion"] = { reason: "counts-pilots-as-paying", note: "5 are pilots" };
+    }),
+  );
+  assert.ok(explained.ok, explained.ok ? "" : JSON.stringify(explained.issues));
+});
+
+test("derived revenue, costs and headcount must stay within the safe-integer range", () => {
+  const max = Number.MAX_SAFE_INTEGER;
+  const revenue = issuesOf(edit((c) => (c["hidden"]["weeklyPriceCents"] = max)));
+  assert.deepEqual(revenue.map((i) => i.path), [`${COMPANY}.hidden.weeklyPriceCents`]);
+  assert.match(revenue[0]?.message ?? "", /weekly revenue .* is beyond the safe-integer range/);
+
+  const costs = issuesOf(edit((c) => (c["hidden"]["otherWeeklyCostsCents"] = max)));
+  assert.deepEqual(costs, [
+    { path: `${COMPANY}.hidden.team`, message: "weekly costs with otherWeeklyCostsCents is beyond the safe-integer range" },
+  ]);
+
+  const people = issuesOf(
+    edit((c) => {
+      c["hidden"]["team"].push({ specialization: "sales", headcount: max, weeklyCostCents: 0, productivityBps: 10000 });
+    }),
+  );
+  assert.deepEqual(people, [{ path: `${COMPANY}.hidden.team`, message: "total headcount is beyond the safe-integer range" }]);
+});
