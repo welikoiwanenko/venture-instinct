@@ -132,7 +132,7 @@ test("the seed field takes typed text, including keys that are commands elsewher
     const intent = screenKeyIntent(input, key, inputMode(state));
     assert.ok(intent !== undefined, `no intent for ${JSON.stringify(input)}`);
     if (intent.type === "start") return intent;
-    state = update(state, intent as Exclude<Intent, { type: "start" | "quit" | "text-mode" | "scroll" }>);
+    state = update(state, intent as Exclude<Intent, { type: "start" | "quit" | "text-mode" | "scroll" | "move-company" | "open-company" }>);
     return intent;
   };
   press("", { return: true });
@@ -177,11 +177,11 @@ test("text mode starts a campaign with start <seed>", async () => {
   assert.doesNotMatch(output, /Seed {7}demo-2/);
 });
 
-test("the launch command starts a campaign from the baseline fixture by default", () => {
+test("the launch command starts a campaign from the Gamma pack by default", () => {
   const run = spawnSync(process.execPath, ["src/tui/main.ts", "--text"], { cwd: ROOT, input: "start demo-1\nq\n", encoding: "utf8" });
   assert.equal(run.status, 0, run.stderr);
-  assert.match(run.stdout, /Scenario {3}fixtures\/scenarios\/technical-empty\.json/);
-  const campaignId = /^Campaign {3}(cmp-[0-9a-f]{16})$/m.exec(cli(["--seed", "demo-1", "--scenario", SCENARIO_PATH]))?.[1];
+  assert.match(run.stdout, /Scenario {3}content\/scenarios\/gamma-three-companies\.json/);
+  const campaignId = /^Campaign {3}(cmp-[0-9a-f]{16})$/m.exec(cli(["--seed", "demo-1", "--scenario", "content/scenarios/gamma-three-companies.json"]))?.[1];
   assert.ok(campaignId !== undefined && run.stdout.includes(`Campaign   ${campaignId}`));
 
   const missing = spawnSync(process.execPath, ["src/tui/main.ts", "--text", "--scenario", "nope.json"], { cwd: ROOT, input: "start demo-1\nq\n", encoding: "utf8" });

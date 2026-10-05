@@ -24,6 +24,7 @@ export {
   formatMetricValue,
   formatPeriod,
   formatSource,
+  formatWeeks,
   METRIC_LABELS,
   STATUS_LABELS,
 } from "./format.ts";
