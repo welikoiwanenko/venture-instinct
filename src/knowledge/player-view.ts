@@ -54,13 +54,14 @@ export interface PlayerView {
   readonly companies: readonly PlayerCompany[];
 }
 
-export interface PlayerViewSource {
+/** What a view is built from; the debug view takes the same. */
+export interface ViewSource {
   readonly campaignId: string;
   readonly state: CampaignState;
   readonly profiles: readonly CompanyProfile[];
 }
 
-export function buildPlayerView({ campaignId, state, profiles }: PlayerViewSource): PlayerView {
+export function buildPlayerView({ campaignId, state, profiles }: ViewSource): PlayerView {
   const delivered = state.observations.observations;
   const companies: PlayerCompany[] = [];
   for (const company of state.companies) {

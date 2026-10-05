@@ -4,11 +4,11 @@
 // view never links to it, and player-facing adapters (TUI, Playtest MCP) must not
 // import it. Pure, like the player view.
 
-import type { CampaignState } from "../campaign/initial-state.ts";
 import type { CompanyState } from "../campaign/company-dimensions.ts";
 import type { CompanyProfile } from "../content/company-profile.ts";
 import { deepFreeze } from "../data/plain-data.ts";
 import { trueMetricValue } from "./facts.ts";
+import type { ViewSource } from "./player-view.ts";
 import { METRIC_NAMES, type Metric, type Observation, type ObservationProvenance } from "./observation.ts";
 import { verificationStatus, type VerificationStatus } from "./verification.ts";
 
@@ -38,13 +38,7 @@ export interface DebugView {
   readonly companies: readonly DebugCompany[];
 }
 
-export interface DebugViewSource {
-  readonly campaignId: string;
-  readonly state: CampaignState;
-  readonly profiles: readonly CompanyProfile[];
-}
-
-export function buildDebugView({ campaignId, state, profiles }: DebugViewSource): DebugView {
+export function buildDebugView({ campaignId, state, profiles }: ViewSource): DebugView {
   const { observations, provenance } = state.observations;
   const companies = state.companies.map((company): DebugCompany => {
     const profile = profiles.find((p) => p.id === company.companyId);
@@ -67,5 +61,5 @@ export function buildDebugView({ campaignId, state, profiles }: DebugViewSource)
         }),
     };
   });
-  return deepFreeze({ kind: "debug" as const, campaignId, planningWeek: state.planningWeek, companies: structuredClone(companies) });
+  return deepFreeze({ kind: "debug" as const, campaignId, planningWeek: state.planningWeek, companies });
 }
