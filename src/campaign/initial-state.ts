@@ -4,6 +4,7 @@
 
 import type { CampaignConfig } from "../config/campaign-config.ts";
 import type { CompanyProfile } from "../content/company-profile.ts";
+import { EMPTY_OBSERVATION_LOG, type ObservationLog } from "../knowledge/observation.ts";
 import { initialCompanyStates, type CompanyState } from "./company-dimensions.ts";
 import { openingInvestmentBudget, type InvestmentBudget } from "./investment-budget.ts";
 import { openWeekSlots, type SlotBalance } from "./slots.ts";
@@ -19,6 +20,12 @@ export interface CampaignState {
   readonly portfolio: readonly [];
   /** Every company of the pack, known or not, in pack order (§8.3). */
   readonly companies: readonly CompanyState[];
+  /**
+   * Everything delivered to the player, with its internal provenance (§9.1). Only the
+   * player knowledge view may read it for players, and it returns only the
+   * player-facing half.
+   */
+  readonly observations: ObservationLog;
 }
 
 export function createInitialCampaignState(config: CampaignConfig, companies: readonly CompanyProfile[]): CampaignState {
@@ -30,5 +37,6 @@ export function createInitialCampaignState(config: CampaignConfig, companies: re
     budget: openingInvestmentBudget(config),
     portfolio: Object.freeze([]) as readonly [],
     companies: initialCompanyStates(companies),
+    observations: EMPTY_OBSERVATION_LOG,
   });
 }

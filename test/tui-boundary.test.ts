@@ -11,6 +11,8 @@ import { test } from "node:test";
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const TUI_DIR = join(ROOT, "src", "tui");
 const APP_DIR = join(ROOT, "src", "app");
+// Part of the application layer, but developer-only: player-facing adapters never see hidden state.
+const DEBUG_API = join(APP_DIR, "debug.ts");
 const ALLOWED_PACKAGES = new Set(["ink", "react"]);
 
 // Whitespace and comments may sit between the keyword and the specifier.
@@ -27,7 +29,11 @@ export function forbiddenImports(file: string, source: string): string[] {
     }
     const target = resolve(dirname(file), specifier);
     const inside = (dir: string) => target === dir || target.startsWith(`${dir}${sep}`);
-    if (!inside(TUI_DIR) && !inside(APP_DIR)) problems.push(`${specifier} (resolves to ${relative(ROOT, target)})`);
+    if (target === DEBUG_API) {
+      problems.push(`${specifier} (developer-only debug view, §17.4)`);
+    } else if (!inside(TUI_DIR) && !inside(APP_DIR)) {
+      problems.push(`${specifier} (resolves to ${relative(ROOT, target)})`);
+    }
   }
   return problems;
 }
@@ -60,6 +66,8 @@ test("the boundary check rejects domain internals, hidden state and other adapte
     `const b = await import(\n  // lazy\n  '../campaign/slots.ts'\n);`,
     "const c = await import(`../campaign/money.ts`);",
     `import { d } from /* note */ "../config/campaign-config.ts";`,
+    `import { viewForDebug } from "../app/debug.ts";`,
+    `import { buildPlayerView } from "../knowledge/player-view.ts";`,
     `import chalk from "chalk";`,
     `import { ok } from "../app/campaign-app.ts";`,
     `import { Box } from "ink";`,
@@ -76,15 +84,17 @@ test("the boundary check rejects domain internals, hidden state and other adapte
     "../campaign/slots.ts (resolves to src/campaign/slots.ts)",
     "../campaign/money.ts (resolves to src/campaign/money.ts)",
     "../config/campaign-config.ts (resolves to src/config/campaign-config.ts)",
+    "../app/debug.ts (developer-only debug view, §17.4)",
+    "../knowledge/player-view.ts (resolves to src/knowledge/player-view.ts)",
     "chalk (package not allowed)",
   ]);
 });
 
 test("TUI code reads a campaign only through the application API", () => {
   // `inspectCampaign` is the player-visible read; the TUI must not reach into the
-  // handle's config, state or manifest itself.
+  // handle's config, state, manifest or scenario pack itself.
   const problems = tuiFiles(TUI_DIR).flatMap((file) =>
-    [...readFileSync(file, "utf8").matchAll(/\bcampaign\??\.(state|config|manifest)\b/g)].map(
+    [...readFileSync(file, "utf8").matchAll(/\bcampaign\??\.(state|config|manifest|scenario)\b/g)].map(
       (m) => `${relative(ROOT, file)}: ${m[0]}`,
     ),
   );

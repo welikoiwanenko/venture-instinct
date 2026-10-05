@@ -28,7 +28,8 @@ export interface EngineVersions {
   readonly math: number;
 }
 
-// simulation v2: the initial state lists every company of the pack with its §8.3 dimensions.
+// simulation v2: the initial state lists every company of the pack with its §8.3
+// dimensions and holds the player's observation log.
 export const ENGINE_VERSIONS: EngineVersions = Object.freeze({ simulation: 2, rng: 1, math: 2 });
 
 export const MANIFEST_FORMAT = 1;
