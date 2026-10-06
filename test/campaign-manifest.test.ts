@@ -91,20 +91,21 @@ test("technical fixture: identical inputs give identical manifest and initial st
 test("technical fixture manifest is pinned", () => {
   // Re-pinned in VI-26 with math v2 and config v2 (money moved from dollars to cents),
   // and in VI-14/VI-17 with simulation v2 (the initial state lists the pack's companies
-  // and holds the player's observation log).
+  // and holds the player's observation log), and in VI-31 with simulation v3 (the
+  // state records delivered research).
   const manifest = build();
   assert.deepEqual(
     { ...manifest, config: undefined, initialState: undefined },
     {
       format: 1,
-      campaignId: "cmp-887c2e66d8f4a46e",
+      campaignId: "cmp-ee8e0e1e5f894343",
       seed: SEED,
       scenario: { id: "technical-fixture-empty", contentHash: "sha256:de3bf02e2a9814fb9e6f96614bad51c55d9a1a1ba0ac385628270e5f9fe4924e" },
-      versions: { simulation: 2, content: 1, config: 2, rng: 1, math: 2 },
+      versions: { simulation: 3, content: 1, config: 2, rng: 1, math: 2 },
       config: undefined,
       configHash: "sha256:6a46363af32aecdb1a886086b944088c3bcdb1388e10b910717308db9f9c8627",
       initialState: undefined,
-      initialStateHash: "sha256:470c0b36e8cdbb0792200978d670e9235ca2a8db58b53be1b1ba5a1d0c70d1db",
+      initialStateHash: "sha256:61a615b80d69da7af956ddbc43ec7aac6cad662cd089a37259649cfa505405e0",
     },
   );
   assert.deepEqual(manifest.config, POC_BASELINE_CONFIG);
@@ -116,6 +117,7 @@ test("technical fixture manifest is pinned", () => {
     portfolio: [],
     companies: [],
     observations: { observations: [], provenance: [] },
+    research: [],
   });
 });
 

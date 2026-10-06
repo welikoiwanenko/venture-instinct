@@ -14,6 +14,12 @@ import {
 } from "../manifest/campaign-manifest.ts";
 import { canonicalHash } from "../manifest/canonical-json.ts";
 import type { CommandRecord } from "./commands.ts";
+import {
+  availableActions as listAvailableActions,
+  validateWeeklyPlan as checkWeeklyPlan,
+  type AvailableActions,
+  type PlanValidation,
+} from "../campaign/weekly-plan.ts";
 import { buildPlayerView, searchPlayerView, type PlayerCompany, type PlayerView } from "../knowledge/player-view.ts";
 
 // Adapters import only from src/app/, so the helpers they need are re-exported here.
@@ -38,6 +44,19 @@ export type {
 } from "../knowledge/player-view.ts";
 export { compareObservations, type ObservationComparison, type VerificationStatus } from "../knowledge/verification.ts";
 export { METRICS, type Metric, type Period } from "../knowledge/observation.ts";
+export {
+  ACTION_CATALOGUE,
+  type ActionSpec,
+  type AvailableActions,
+  type AvailableCheck,
+  type AnsweredCheck,
+  type CompanyActions,
+  type PlanAction,
+  type PlanReview,
+  type PlanReviewAction,
+  type PlanValidation,
+  type WeeklyPlan,
+} from "../campaign/weekly-plan.ts";
 export {
   submitCommand,
   type CommandEnvelope,
@@ -166,4 +185,19 @@ export function viewAsPlayer(campaign: Campaign): PlayerView {
 /** Known companies whose readable text matches `query`. Unknown companies are never searched. */
 export function searchKnownCompanies(campaign: Campaign, query: string): readonly PlayerCompany[] {
   return searchPlayerView(viewAsPlayer(campaign), query);
+}
+
+/**
+ * Checks a draft plan for the planning week against the state at its start (§6.1) and,
+ * when valid, returns the plan review: actions, slot costs, slots left and unanswered
+ * deadlines. Otherwise returns every player-visible reason. Drafts are not domain state:
+ * pure, never changes the campaign.
+ */
+export function validateWeeklyPlan(campaign: Campaign, plan: unknown): PlanValidation {
+  return checkWeeklyPlan(campaign.state, campaign.scenario.content.companies, plan);
+}
+
+/** The actions the player can plan this week, with cost and arrival, never their results. Pure. */
+export function availableActions(campaign: Campaign): AvailableActions {
+  return listAvailableActions(campaign.state, campaign.scenario.content.companies);
 }
