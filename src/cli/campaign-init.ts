@@ -114,6 +114,7 @@ export function formatSummary(s: CampaignSummary): string {
     ["Invested", `${s.initialInvestmentsMade} of ${s.maxInitialInvestments} initial checks of ${formatCentsAsUsd(s.checkSizeCents)}`],
     ["Portfolio", s.portfolioSize === 0 ? "empty" : `${s.portfolioSize} companies`],
     ["Companies", `${s.knownCompanies} known`],
+    ["Revision", `${s.revision} (accepted commands)`],
     ["State", s.stateHash],
   ];
   return rows.map(([label, value]) => `${label.padEnd(10)} ${value}`).join("\n");
