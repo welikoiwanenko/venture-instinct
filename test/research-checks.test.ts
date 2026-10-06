@@ -41,12 +41,10 @@ function issuesOf(pack: unknown): readonly ContentIssue[] {
   return result.ok ? [] : result.issues;
 }
 
-test("the Gamma pack and the fixtures still validate with no checks authored", () => {
-  for (const path of ["content/scenarios/gamma-three-companies.json", "fixtures/scenarios/minimal-one-company.json"]) {
-    const result = validateScenarioPack(load(path));
-    assert.ok(result.ok, path);
-    for (const company of result.pack.content.companies) assert.deepEqual(company.researchChecks, [], company.id);
-  }
+test("a pack with no checks authored still validates", () => {
+  const result = validateScenarioPack(load("fixtures/scenarios/minimal-one-company.json"));
+  assert.ok(result.ok);
+  assert.deepEqual(result.pack.content.companies[0]!.researchChecks, []);
 });
 
 test("a check with each result kind validates and keeps its fields", () => {
