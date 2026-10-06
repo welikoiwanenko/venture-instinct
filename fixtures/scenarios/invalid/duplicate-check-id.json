@@ -1,0 +1,95 @@
+{
+  "id": "technical-fixture-one-company",
+  "contentVersion": 1,
+  "content": {
+    "purpose": "Invalid on purpose: two research checks share one id.",
+    "companies": [
+      {
+        "id": "co-fixture-alpha",
+        "name": "Fixture Alpha",
+        "sector": "developer-tools",
+        "businessModel": "b2b-recurring-software",
+        "description": "A placeholder developer-tools company used to test the schema.",
+        "founders": [
+          {
+            "id": "fd-fixture-alpha-1",
+            "name": "Founder One",
+            "specialization": "engineering"
+          }
+        ],
+        "initialKnowledge": "inbound",
+        "application": {
+          "authorId": "fd-fixture-alpha-1",
+          "summary": "Placeholder application summary.",
+          "text": "Placeholder application text used to test the schema.",
+          "claims": [
+            {
+              "metric": "payingCustomers",
+              "value": 4,
+              "period": {
+                "fromWeek": 0,
+                "toWeek": 0
+              }
+            }
+          ]
+        },
+        "hidden": {
+          "cashCents": 10000000,
+          "weeklyPriceCents": 20000,
+          "payingCustomers": 4,
+          "largestCustomerShareBps": 4000,
+          "baseWeeklyLeads": 3,
+          "productFit": 50,
+          "team": [
+            {
+              "specialization": "engineering",
+              "headcount": 2,
+              "weeklyCostCents": 600000,
+              "productivityBps": 10000
+            }
+          ],
+          "otherWeeklyCostsCents": 50000,
+          "founderAlignmentBps": 10000,
+          "unresolvedConflicts": [],
+          "strategy": "product"
+        },
+        "researchChecks": [
+          {
+            "id": "chk-fixture-alpha-billing",
+            "direction": "customers",
+            "question": "How many teams paid an invoice last month?",
+            "evidence": {
+              "source": "Billing export",
+              "period": {
+                "fromWeek": -3,
+                "toWeek": 0
+              }
+            },
+            "result": {
+              "kind": "metric",
+              "metric": "payingCustomers",
+              "value": 4
+            }
+          },
+          {
+            "id": "chk-fixture-alpha-billing",
+            "direction": "product",
+            "question": "Do teams use it every day?",
+            "evidence": {
+              "source": "Billing export",
+              "period": {
+                "fromWeek": -3,
+                "toWeek": 0
+              }
+            },
+            "result": {
+              "kind": "text",
+              "title": "Daily use",
+              "text": "Most teams open the dashboard every day."
+            }
+          }
+        ]
+      }
+    ]
+  }
+}
