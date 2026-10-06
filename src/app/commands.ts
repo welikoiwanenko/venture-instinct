@@ -16,7 +16,9 @@
 
 import { deepFreeze, snapshotPlainData } from "../data/plain-data.ts";
 import { canonicalHash, canonicalJson } from "../manifest/canonical-json.ts";
+import { endWeek } from "../campaign/end-week.ts";
 import type { CampaignState } from "../campaign/initial-state.ts";
+import { normalizePlan } from "../campaign/weekly-plan.ts";
 import type { Campaign } from "./campaign-app.ts";
 
 /** What a client submits. Untrusted until checked. */
@@ -82,8 +84,24 @@ export interface CommandHandler {
 
 export type CommandHandlers = Readonly<Record<string, CommandHandler>>;
 
-/** The game's command types. End Week arrives in VI-32. */
-export const COMMAND_HANDLERS: CommandHandlers = Object.freeze({});
+/**
+ * The game's command types.
+ * - `endWeek` (§6.2): args are the weekly plan, `{ week, actions }`. It validates the
+ *   plan against the start of the week, spends slots, delivers research and opens the
+ *   next week, or rejects the whole plan with every reason and changes nothing.
+ */
+export const COMMAND_HANDLERS: CommandHandlers = Object.freeze({
+  endWeek: {
+    normalize: (args) => {
+      const plan = normalizePlan(args);
+      return plan.ok ? { ok: true, args: plan.plan } : plan;
+    },
+    apply: (campaign: Campaign, plan: unknown): HandlerOutcome => {
+      const outcome = endWeek(campaign.state, campaign.scenario.content.companies, campaign.config, plan);
+      return outcome.ok ? { ok: true, state: outcome.state, result: outcome.result } : outcome;
+    },
+  },
+});
 
 const COMMAND_ID_PATTERN = /^[\x21-\x7e]{1,128}$/;
 const ENVELOPE_KEYS = ["commandId", "expectedRevision", "type", "args"];
