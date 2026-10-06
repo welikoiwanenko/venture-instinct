@@ -3,6 +3,7 @@
 // always carry a text label and a symbol; colour is decoration only.
 
 import {
+  availableActions,
   compareObservations,
   formatCentsAsUsd,
   formatMetricValue,
@@ -17,8 +18,10 @@ import {
   type PlayerCompany,
   type PlayerObservation,
   type PlayerView,
+  type AvailableActions,
 } from "../app/campaign-app.ts";
 import { inputMode, SECTIONS, sectionIndex, type InputMode, type SectionId, type TuiState } from "./model.ts";
+import { reviewDraft, type PlanItem } from "./session.ts";
 
 export interface StatusField {
   readonly label: string;
@@ -50,11 +53,21 @@ export interface Screen {
   readonly body: readonly string[];
   /** Known companies, for the Companies cursor; 0 without a campaign. */
   readonly companyCount: number;
+  /** Actions offered in the Plan list, in display order, for the Plan cursor; empty without a campaign. */
+  readonly planRows: readonly PlanRow[];
+  /** Slots the week has left after the draft; 0 without a campaign. */
+  readonly slotsLeft: number;
   /**
    * Body lines [start, end) of the selected company in the Companies list. The renderer
    * keeps them in the viewport, whatever the scroll position or window size.
    */
   readonly selected?: { readonly start: number; readonly end: number };
+}
+
+/** One offered action in the Plan list. */
+export interface PlanRow {
+  readonly item: PlanItem;
+  readonly cost: number;
 }
 
 /** Below this width the TUI drops the side navigation and uses a single column. */
@@ -99,6 +112,19 @@ const COMPANY_CARD_KEYS: readonly KeyHint[] = [
   { keys: "Esc/←", action: "back to the company list", short: "back" },
 ];
 
+const PLAN_LIST_KEYS: readonly KeyHint[] = [
+  { keys: "↑↓ j/k", action: "choose an action", short: "choose" },
+  { keys: "Enter/Space", action: "add or remove the action", short: "add/remove" },
+  { keys: "r", action: "review the plan before End Week", short: "review" },
+  { keys: "Esc/←", action: "back to the section list", short: "back" },
+];
+
+const PLAN_REVIEW_KEYS: readonly KeyHint[] = [
+  { keys: "Enter", action: "end the week with this plan", short: "end week" },
+  { keys: "↑↓ j/k", action: "scroll", short: "scroll" },
+  { keys: "Esc/←", action: "back to the plan", short: "back" },
+];
+
 const PAGE_KEY: KeyHint = { keys: "PgUp/PgDn", action: "scroll the content a page" };
 
 /** Keys per input mode; the hint bar shows the current mode's keys. */
@@ -108,6 +134,8 @@ export const MODE_KEYS: Readonly<Record<InputMode, readonly KeyHint[]>> = {
   seed: SEED_KEYS,
   "company-list": [...COMPANY_LIST_KEYS, ...ANYWHERE_KEYS],
   "company-card": [...COMPANY_CARD_KEYS, ...ANYWHERE_KEYS],
+  "plan-list": [...PLAN_LIST_KEYS, ...ANYWHERE_KEYS],
+  "plan-review": [...PLAN_REVIEW_KEYS, ...ANYWHERE_KEYS],
 };
 
 const MODE_LABELS: Readonly<Record<InputMode, string>> = {
@@ -116,6 +144,8 @@ const MODE_LABELS: Readonly<Record<InputMode, string>> = {
   seed: "Seed field",
   "company-list": "Company list",
   "company-card": "Company card",
+  "plan-list": "Plan",
+  "plan-review": "Plan review",
 };
 
 /** Help screen: every key, grouped by where it works. */
@@ -123,6 +153,8 @@ export function helpLines(): string[] {
   const groups: Array<[string, readonly KeyHint[]]> = [
     ["In the section list", SECTION_LIST_KEYS],
     ["In the content", CONTENT_KEYS],
+    // Before the section-specific groups, so a short window still shows it.
+    ["Anywhere", [PAGE_KEY, ...ANYWHERE_KEYS]],
     ["In the seed field (type the seed)", SEED_KEYS.slice(0, 2)],
     [
       "In Companies",
@@ -133,7 +165,15 @@ export function helpLines(): string[] {
         { keys: "Esc/←", action: "from a card, back to the company list" },
       ],
     ],
-    ["Anywhere", [PAGE_KEY, ...ANYWHERE_KEYS]],
+    [
+      "In Plan",
+      [
+        { keys: "↑↓ j/k", action: "choose an action" },
+        { keys: "Enter/Space", action: "add or remove the action" },
+        { keys: "r", action: "review the plan; Enter there ends the week" },
+        { keys: "Esc/←", action: "from the review, back to the plan" },
+      ],
+    ],
   ];
   const width = Math.max(...groups.flatMap(([, hints]) => hints.map((h) => h.keys.length)));
   return groups.flatMap(([heading, hints], i) => [...(i === 0 ? [] : [""]), `${heading}:`, ...renderHelp(hints, width)]);
@@ -172,24 +212,27 @@ export const TEXT_COMMANDS: readonly KeyHint[] = [
   { keys: "p / prev", action: "previous section" },
   { keys: "open <n>", action: "open a company's card, e.g. open 1" },
   { keys: "expand / short", action: "messages on a card in full or short form" },
-  { keys: "back", action: "from a card, back to the company list" },
+  { keys: "back", action: "from a card or the plan review, go back" },
+  { keys: "add <n> / remove <n>", action: "add or remove an action in the plan, e.g. add 1" },
+  { keys: "review", action: "review the plan before End Week" },
+  { keys: "end", action: "end the week with the reviewed plan" },
   { keys: "? / help", action: "list commands" },
   { keys: "q / quit", action: "quit" },
 ];
 
 const PLACEHOLDERS: Readonly<Record<Exclude<SectionId, "overview">, readonly string[]>> = {
   inbox: [
-    "Messages delivered to you this week: applications, replies, research",
-    "results and company updates. Each item shows its source and date.",
+    "Messages delivered to you: applications, replies, research results and",
+    "company updates, newest first. Each item shows its source and the week",
+    "you got it.",
     "",
-    "· The inbox arrives with weekly planning. Until then, this week's",
-    "  applications are on each company's card: 4 Companies.",
+    "· No campaign yet: start one on the Overview.",
   ],
   discovery: [
     "Leads you have not engaged with yet: signals from the market and",
     "outbound searches you ran.",
     "",
-    "· Nothing here yet: discovery arrives with weekly planning.",
+    "· Nothing here yet: discovery arrives in a later milestone.",
   ],
   companies: [
     "Companies you know, with the evidence you have about each one:",
@@ -213,7 +256,7 @@ const PLACEHOLDERS: Readonly<Record<Exclude<SectionId, "overview">, readonly str
     "This week's plan: actions, their slot cost, prerequisites and when the",
     "result arrives. One review before End Week.",
     "",
-    "· Nothing here yet: weekly planning arrives in a later milestone.",
+    "· No campaign yet: start one on the Overview.",
   ],
 };
 
@@ -235,6 +278,16 @@ export function buildScreen(state: TuiState, context: ScreenContext): Screen {
   const view = state.campaign === undefined ? undefined : viewAsPlayer(state.campaign);
   const open = view !== undefined && state.companyOpen ? view.companies[state.companyCursor] : undefined;
   const list = section.id === "companies" && view !== undefined && open === undefined ? companyList(view, state.companyCursor, context) : undefined;
+  const actions = state.campaign === undefined ? undefined : availableActions(state.campaign);
+  const planRows = actions === undefined ? [] : offeredRows(actions);
+  const slotsLeft = actions === undefined ? 0 : actions.slotsAvailable - draftCost(state.planDraft, planRows);
+  const plan =
+    section.id === "plan" && state.campaign !== undefined && actions !== undefined && view !== undefined
+      ? state.reviewOpen
+        ? { lines: planReview(state, context) }
+        : planEditor(state, actions, view, planRows, slotsLeft, context)
+      : undefined;
+  const selected = list?.selected ?? (plan !== undefined && "selected" in plan ? plan.selected : undefined);
   return {
     status: statusFields(summary),
     queue: "○ Nothing needs you",
@@ -250,9 +303,15 @@ export function buildScreen(state: TuiState, context: ScreenContext): Screen {
           ? open !== undefined
             ? companyCard(open, state.messagesExpanded, context)
             : (list?.lines ?? [])
-          : PLACEHOLDERS[section.id],
+          : plan !== undefined
+            ? plan.lines
+            : section.id === "inbox" && view !== undefined
+              ? inbox(view)
+              : PLACEHOLDERS[section.id],
     companyCount: view?.companies.length ?? 0,
-    ...(list?.selected === undefined ? {} : { selected: list.selected }),
+    planRows,
+    slotsLeft,
+    ...(selected === undefined ? {} : { selected }),
   };
 }
 
@@ -296,7 +355,9 @@ function startForm(state: TuiState, context: ScreenContext): string[] {
 function overview(s: CampaignSummary): string[] {
   const row = (label: string, value: string) => `${label.padEnd(11)}${value}`;
   return [
-    "✔ Campaign started. Nothing has happened yet: plan week 1.",
+    s.completedWeeks === 0
+      ? "✔ Campaign started. Nothing has happened yet: plan week 1."
+      : `✔ ${s.completedWeeks} ${s.completedWeeks === 1 ? "week" : "weeks"} done. Plan week ${s.planningWeek} in 7 Plan.`,
     "",
     row("Week", `planning week ${s.planningWeek}; ${s.completedWeeks} of ${s.horizonWeeks} completed`),
     row("Window", s.investmentWindowOpen ? "initial investments open" : "initial investments closed"),
@@ -404,6 +465,125 @@ function companyCard(company: PlayerCompany, expanded: boolean, context: ScreenC
     }
   }
   if (company.observations.length === 0) lines.push("", "Nothing delivered about this company yet.");
+  return lines;
+}
+
+/** The offered checks in display order: company by company, as the Plan list shows them. */
+function offeredRows(actions: AvailableActions): PlanRow[] {
+  return actions.research.flatMap((company) =>
+    company.checks.map((check) => ({ item: { companyId: company.companyId, checkId: check.checkId }, cost: check.slotCost })),
+  );
+}
+
+function draftCost(draft: readonly PlanItem[], rows: readonly PlanRow[]): number {
+  return draft.reduce((sum, item) => sum + (rows.find((r) => sameItem(r.item, item))?.cost ?? 0), 0);
+}
+
+function sameItem(a: PlanItem, b: PlanItem): boolean {
+  return a.companyId === b.companyId && a.checkId === b.checkId;
+}
+
+/**
+ * The plan editor (§6.1, §7, §15): each offered check with its question, what it reads,
+ * its cost and when the result arrives, shown before it is added. Never a result.
+ */
+function planEditor(
+  state: TuiState,
+  actions: AvailableActions,
+  view: PlayerView,
+  rows: readonly PlanRow[],
+  slotsLeft: number,
+  context: ScreenContext,
+): { lines: string[]; selected?: { start: number; end: number } } {
+  const used = actions.slotsAvailable - slotsLeft;
+  const spec = actions.catalogue.research;
+  const lines = [
+    `Week ${actions.week} plan · ${used} of ${actions.slotsAvailable} slots planned · ${slotsLeft} left`,
+    `${spec.title}: ${spec.slotCost} slot each; needs ${spec.prerequisites}. Results arrive at the end of week ${actions.week}; read them in week ${actions.week + 1}.`,
+    context.linear === true
+      ? "Type add or remove and a number, e.g. add 1; then review, and end."
+      : "Choose with ↑/↓; Enter or Space adds or removes; r reviews the plan before End Week.",
+  ];
+  if (state.planMessages.length > 0) lines.push("", ...state.planMessages);
+  let selected: { start: number; end: number } | undefined;
+  let index = 0;
+  for (const company of actions.research) {
+    lines.push("", company.companyName);
+    if (company.checks.length === 0 && company.answered.length === 0) lines.push("  No research is available for this company.");
+    for (const check of company.checks) {
+      const start = lines.length;
+      const planned = state.planDraft.some((i) => i.companyId === company.companyId && i.checkId === check.checkId);
+      const marker = context.linear !== true && index === state.planCursor ? "▸" : " ";
+      lines.push(
+        `${marker} ${index + 1}  ${planned ? "[x]" : "[ ]"} ${check.question}`,
+        `        ${check.direction} · reads ${check.source} · ${check.slotCost} slot · result readable in week ${check.resultReadableWeek}`,
+      );
+      if (index === state.planCursor) selected = { start, end: lines.length };
+      index += 1;
+    }
+    for (const answered of company.answered) {
+      lines.push(`  ✔ Answered in week ${answered.week}: ${answered.question} (read it on the card)`);
+    }
+  }
+  if (rows.length === 0) lines.push("", "No research is available this week. You can still end the week: r, then Enter.");
+  if (view.companies.length === 0) lines.push("", "You do not know any companies yet.");
+  return selected === undefined ? { lines } : { lines, selected };
+}
+
+/** The one review before End Week (§6.1, §15), or every reason the draft cannot end it. */
+function planReview(state: TuiState, context: ScreenContext): string[] {
+  if (state.campaign === undefined) return [];
+  const result = reviewDraft(state.campaign, state.planDraft);
+  const back = context.linear === true ? "type back to edit the plan" : "Esc goes back to the plan";
+  if (!result.ok) {
+    return ["✖ This plan cannot end the week:", ...result.reasons.map((r) => `  ${r}`), "", `Fix it first: ${back}.`];
+  }
+  const { review } = result;
+  const lines = [`Plan review for week ${review.week}: the one check before End Week.`, ""];
+  if (review.actions.length === 0) lines.push("  No actions: the week passes without new evidence.");
+  review.actions.forEach((a, i) => {
+    lines.push(`  ${i + 1}. ${a.title} · ${a.companyName} · ${a.question}`, `     ${a.slotCost} slot · result readable in week ${a.resultReadableWeek}`);
+  });
+  lines.push(
+    "",
+    `Slots: ${review.slotsUsed} of ${review.slotsAvailable} used · ${review.slotsLeft} left; unused slots do not carry over.`,
+    `Unanswered deadlines: ${review.unansweredDeadlines.length === 0 ? "none" : review.unansweredDeadlines.join("; ")}`,
+    "",
+    context.linear === true ? `Type end to end week ${review.week}, or ${back}.` : `Press Enter to end week ${review.week}, or Esc to go back to the plan.`,
+  );
+  return lines;
+}
+
+/**
+ * Messages and research results delivered to the player, newest first (§15). Application
+ * figures stay on the company card. A research result arrives at the end of its week and
+ * an application at the start, so "new" means since the last week ended.
+ */
+function inbox(view: PlayerView): string[] {
+  const items = view.companies.flatMap((company) =>
+    company.observations
+      .filter((o) => o.content.kind === "text" || o.source.kind === "check")
+      .map((o) => ({ company, o, names: new Map(company.profile?.founders.map((f) => [f.founderId, f.name])) })),
+  );
+  if (items.length === 0) return ["Nothing delivered to you yet."];
+  const atEnd = (o: PlayerObservation) => o.source.kind === "check";
+  // Newest first: later week, and within a week the end-of-week deliveries first; otherwise delivery order.
+  const ordered = items
+    .map((item, i) => ({ ...item, i }))
+    .sort((a, b) => b.o.receivedWeek - a.o.receivedWeek || Number(atEnd(b.o)) - Number(atEnd(a.o)) || a.i - b.i);
+  const lines = [`${ordered.length} ${ordered.length === 1 ? "item" : "items"}, newest first. Every figure is also on its company's card: 4 Companies.`];
+  let heading = "";
+  for (const { company, o, names } of ordered) {
+    const when = atEnd(o) ? `Delivered at the end of week ${o.receivedWeek}` : `Arrived in week ${o.receivedWeek}`;
+    if (when !== heading) {
+      lines.push("", when);
+      heading = when;
+    }
+    const fresh = atEnd(o) ? o.receivedWeek === view.planningWeek - 1 : o.receivedWeek === view.planningWeek;
+    const what = o.content.kind === "metric" ? `${METRIC_LABELS[o.content.metric]}: ${valueOf(o)}` : o.content.title;
+    lines.push(`  ${o.content.kind === "text" ? "✉" : "▪"} ${companyName(company)} · ${what}${fresh ? " (new)" : ""}`, `    ${evidenceLine(o, names)}`);
+    if (o.content.kind === "text" && atEnd(o)) lines.push(`    ${o.content.text}`);
+  }
   return lines;
 }
 

@@ -4,7 +4,7 @@
 // share this model, so both reach the same sections in the same way.
 
 import type { Campaign } from "../app/campaign-app.ts";
-import type { StartResult } from "./session.ts";
+import type { EndWeekAttempt, PlanItem, StartResult } from "./session.ts";
 
 export const SECTIONS = [
   { id: "overview", title: "Overview", key: "1" },
@@ -23,10 +23,11 @@ export type Pane = "sections" | "content";
 
 /**
  * What key presses mean right now: the two panes, typing into the seed field (the
- * Overview content before a campaign exists), where printable keys are text, or the
- * Companies content once a campaign exists: a list to choose from, or an open card.
+ * Overview content before a campaign exists), where printable keys are text, the
+ * Companies content once a campaign exists (a list to choose from, or an open card),
+ * or the Plan content (the editor, or the one review before End Week).
  */
-export type InputMode = Pane | "seed" | "company-list" | "company-card";
+export type InputMode = Pane | "seed" | "company-list" | "company-card" | "plan-list" | "plan-review";
 
 export interface TuiState {
   readonly section: SectionId;
@@ -45,6 +46,17 @@ export interface TuiState {
   readonly companyOpen: boolean;
   /** Messages on a card in full (true) or in their one-line short form (false). */
   readonly messagesExpanded: boolean;
+  /**
+   * The draft plan for the planning week, in the order the player added actions. It
+   * lives only here: editing it never changes the campaign (§6.1).
+   */
+  readonly planDraft: readonly PlanItem[];
+  /** Position in the Plan list of offered actions (0-based). */
+  readonly planCursor: number;
+  /** Whether the plan review before End Week is open. */
+  readonly reviewOpen: boolean;
+  /** What the last plan edit or End Week said: a refusal, rejection reasons or the outcome. */
+  readonly planMessages: readonly string[];
 }
 
 export type TuiAction =
@@ -64,7 +76,19 @@ export type TuiAction =
   | { readonly type: "open-company"; readonly count: number; readonly index?: number }
   | { readonly type: "close-company" }
   /** Sets the message form, or toggles it when `expanded` is absent. */
-  | { readonly type: "expand"; readonly expanded?: boolean };
+  | { readonly type: "expand"; readonly expanded?: boolean }
+  /** `count` is the number of offered actions; the renderer knows it. */
+  | { readonly type: "move-plan"; readonly delta: number; readonly count: number }
+  /**
+   * Adds `item` to the draft, or removes it when it is there. `slotsLeft` is what the
+   * week has left after the draft and `cost` the action's slot cost, both from the
+   * application API: an action that does not fit is refused, so the editor never
+   * exceeds the week's slots. `index` moves the cursor to the row (text mode).
+   */
+  | { readonly type: "toggle-plan"; readonly item: PlanItem; readonly cost: number; readonly slotsLeft: number; readonly index?: number }
+  | { readonly type: "open-review" }
+  | { readonly type: "close-review" }
+  | { readonly type: "end-week-result"; readonly result: EndWeekAttempt };
 
 export function initialTuiState(): TuiState {
   return Object.freeze({
@@ -78,6 +102,10 @@ export function initialTuiState(): TuiState {
     companyCursor: 0,
     companyOpen: false,
     messagesExpanded: false,
+    planDraft: Object.freeze([]),
+    planCursor: 0,
+    reviewOpen: false,
+    planMessages: Object.freeze([]),
   });
 }
 
@@ -85,6 +113,7 @@ export function inputMode(state: TuiState): InputMode {
   if (state.focus !== "content" || state.helpOpen) return state.focus;
   if (state.section === "overview" && state.campaign === undefined) return "seed";
   if (state.section === "companies" && state.campaign !== undefined) return state.companyOpen ? "company-card" : "company-list";
+  if (state.section === "plan" && state.campaign !== undefined) return state.reviewOpen ? "plan-review" : "plan-list";
   return "content";
 }
 
@@ -150,6 +179,55 @@ export function update(state: TuiState, action: TuiAction): TuiState {
       if (!state.companyOpen || expanded === state.messagesExpanded) return state;
       return Object.freeze({ ...state, messagesExpanded: expanded });
     }
+    case "move-plan": {
+      if (state.reviewOpen) return state;
+      const target = Math.min(Math.max(state.planCursor + action.delta, 0), Math.max(action.count - 1, 0));
+      return target === state.planCursor ? state : Object.freeze({ ...state, planCursor: target });
+    }
+    case "toggle-plan": {
+      if (state.campaign === undefined || state.reviewOpen) return state;
+      const cursor = action.index ?? state.planCursor;
+      const { companyId, checkId } = action.item;
+      const planned = state.planDraft.some((i) => i.companyId === companyId && i.checkId === checkId);
+      if (planned) {
+        return Object.freeze({
+          ...state,
+          planCursor: cursor,
+          planDraft: Object.freeze(state.planDraft.filter((i) => i.companyId !== companyId || i.checkId !== checkId)),
+          planMessages: Object.freeze([]),
+        });
+      }
+      if (action.cost > action.slotsLeft) {
+        const left = action.slotsLeft === 0 ? "No slots are left this week" : `Only ${action.slotsLeft} slot${action.slotsLeft === 1 ? " is" : "s are"} left`;
+        return Object.freeze({ ...state, planCursor: cursor, planMessages: Object.freeze([`${left}; remove an action to add this one.`]) });
+      }
+      return Object.freeze({
+        ...state,
+        planCursor: cursor,
+        planDraft: Object.freeze([...state.planDraft, Object.freeze({ companyId, checkId })]),
+        planMessages: Object.freeze([]),
+      });
+    }
+    case "open-review":
+      if (state.campaign === undefined || state.reviewOpen) return state;
+      return Object.freeze({ ...state, reviewOpen: true, planMessages: Object.freeze([]), scroll: Object.freeze({ ...state.scroll, plan: 0 }) });
+    case "close-review":
+      if (!state.reviewOpen) return state;
+      return Object.freeze({ ...state, reviewOpen: false, scroll: Object.freeze({ ...state.scroll, plan: 0 }) });
+    case "end-week-result":
+      if (state.campaign === undefined) return state;
+      // A rejected plan stays as drafted, with the reasons, so the player can fix it.
+      return action.result.ok
+        ? Object.freeze({
+            ...state,
+            campaign: action.result.campaign,
+            planDraft: Object.freeze([]),
+            planCursor: 0,
+            reviewOpen: false,
+            planMessages: Object.freeze([...action.result.messages]),
+            scroll: Object.freeze({ ...state.scroll, plan: 0 }),
+          })
+        : Object.freeze({ ...state, reviewOpen: false, planMessages: Object.freeze([...action.result.errors]) });
   }
 }
 

@@ -8,7 +8,7 @@ import type { Readable } from "node:stream";
 import { update, type TuiState } from "./model.ts";
 import { textCommand } from "./keys.ts";
 import { buildScreen, renderHelp, renderLinear, TEXT_COMMANDS, type ScreenContext } from "./screen.ts";
-import { startCampaign, type ScenarioSource } from "./session.ts";
+import { startCampaign, submitEndWeek, type ScenarioSource } from "./session.ts";
 
 export interface TextIo {
   readonly input: Readable;
@@ -51,6 +51,40 @@ export async function runTextMode(initial: TuiState, io: TextIo, source: Scenari
         continue;
       }
       state = update(update(state, { type: "select", section: "companies" }), { type: "open-company", count, index: command.index });
+    } else if (command.type === "plan-add" || command.type === "plan-remove") {
+      if (state.campaign === undefined) {
+        io.write("Start a campaign first.\n> ");
+        continue;
+      }
+      state = update(update(state, { type: "select", section: "plan" }), { type: "close-review" });
+      const screen = buildScreen(state, context);
+      const row = screen.planRows[command.index];
+      if (row === undefined) {
+        io.write(`${screen.planRows.length === 0 ? "No research is available this week." : `Choose an action from 1 to ${screen.planRows.length}.`}\n> `);
+        continue;
+      }
+      const planned = state.planDraft.some((i) => i.companyId === row.item.companyId && i.checkId === row.item.checkId);
+      if (planned === (command.type === "plan-add")) {
+        io.write(`Action ${command.index + 1} is ${planned ? "already" : "not"} in the plan.\n> `);
+        continue;
+      }
+      state = update(state, { type: "toggle-plan", item: row.item, cost: row.cost, slotsLeft: screen.slotsLeft, index: command.index });
+    } else if (command.type === "open-review" || command.type === "end-week") {
+      const campaign = state.campaign;
+      if (campaign === undefined) {
+        io.write("Start a campaign first.\n> ");
+        continue;
+      }
+      state = update(state, { type: "select", section: "plan" });
+      // One review before End Week: `end` without an open review shows it first.
+      if (command.type === "end-week" && state.reviewOpen) {
+        state = update(state, { type: "end-week-result", result: submitEndWeek(campaign, state.planDraft) });
+      } else if (!state.reviewOpen) {
+        state = update(state, { type: "open-review" });
+        if (command.type === "end-week") io.write("\nReview the plan first; type end again to end the week.\n");
+      }
+    } else if (command.type === "close-company" && state.reviewOpen && state.section === "plan") {
+      state = update(state, { type: "close-review" });
     } else {
       state = update(state, command);
     }

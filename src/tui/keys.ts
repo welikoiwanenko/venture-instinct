@@ -40,14 +40,23 @@ export type Intent =
   | { readonly type: "open-company" }
   | { readonly type: "close-company" }
   /** Company card: toggle short and full messages. */
-  | { readonly type: "expand" };
+  | { readonly type: "expand" }
+  /** Plan list: move the cursor, add or remove the action under it, or open the review. */
+  | { readonly type: "move-plan"; readonly delta: number }
+  | { readonly type: "toggle-plan" }
+  | { readonly type: "open-review" }
+  /** Plan review: back to the editor, or end the week with the reviewed plan. */
+  | { readonly type: "close-review" }
+  | { readonly type: "end-week" };
 
 /**
  * Keys that work in both panes: 1-7, Tab/Shift+Tab, PgUp/PgDn, ?, t and q. ↑/↓ (j/k)
  * move through the section list or scroll the content, depending on focus; Enter/→
  * (l) opens the content and Esc/← (h) goes back to the section list. In the Companies
  * list ↑/↓ choose a company and Enter/→ opens its card; on a card ↑/↓ scroll, e
- * switches short and full messages and Esc/← goes back to the list. In the seed field
+ * switches short and full messages and Esc/← goes back to the list. In the Plan list
+ * ↑/↓ choose an action, Enter or Space adds or removes it and r opens the review; in
+ * the review Enter ends the week and Esc/← goes back to the plan. In the seed field
  * printable keys are text, so only Tab, Enter, Backspace, Esc/← and Ctrl+C act.
  */
 export function screenKeyIntent(input: string, key: KeyFlags, mode: InputMode): Intent | undefined {
@@ -83,6 +92,19 @@ export function screenKeyIntent(input: string, key: KeyFlags, mode: InputMode): 
       if (back) return { type: "close-company" };
       if (input === "e") return { type: "expand" };
       break;
+    case "plan-list":
+      if (up) return { type: "move-plan", delta: -1 };
+      if (down) return { type: "move-plan", delta: 1 };
+      if (key.return || input === " ") return { type: "toggle-plan" };
+      if (input === "r") return { type: "open-review" };
+      if (back) return { type: "focus", pane: "sections" };
+      break;
+    case "plan-review":
+      if (up) return { type: "scroll", lines: -1 };
+      if (down) return { type: "scroll", lines: 1 };
+      if (key.return) return { type: "end-week" };
+      if (back) return { type: "close-review" };
+      break;
   }
   if (key.escape || key.return || key.leftArrow || key.rightArrow || key.upArrow || key.downArrow || key.meta) return undefined;
   switch (input) {
@@ -115,7 +137,13 @@ export type TextCommand =
   | { readonly type: "start"; readonly seed: string }
   /** `open 2` opens the second known company's card (0-based `index`). */
   | { readonly type: "open-company"; readonly index: number }
-  | { readonly type: "expand"; readonly expanded: boolean };
+  | { readonly type: "expand"; readonly expanded: boolean }
+  /** `add 2` / `remove 2` act on the second offered action (0-based `index`). */
+  | { readonly type: "plan-add"; readonly index: number }
+  | { readonly type: "plan-remove"; readonly index: number }
+  | { readonly type: "open-review" }
+  /** Ends the week; text mode shows the review first if it is not open. */
+  | { readonly type: "end-week" };
 
 /** `undefined` for an empty line; `{ unknown }` when the command is not recognised. */
 export function textCommand(line: string): TextCommand | { readonly unknown: string } | undefined {
@@ -126,9 +154,16 @@ export function textCommand(line: string): TextCommand | { readonly unknown: str
   if (start !== null) return { type: "start", seed: start[1]?.trim() ?? "" };
   const open = /^open\s+(\d+)$/.exec(word);
   if (open !== null) return { type: "open-company", index: Number(open[1]) - 1 };
+  const plan = /^(add|remove)\s+(\d+)$/.exec(word);
+  if (plan !== null) return plan[1] === "add" ? { type: "plan-add", index: Number(plan[2]) - 1 } : { type: "plan-remove", index: Number(plan[2]) - 1 };
   switch (word) {
     case "back":
       return { type: "close-company" };
+    case "review":
+      return { type: "open-review" };
+    case "end":
+    case "end week":
+      return { type: "end-week" };
     case "expand":
       return { type: "expand", expanded: true };
     case "short":
