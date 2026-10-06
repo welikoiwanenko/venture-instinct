@@ -1,0 +1,42 @@
+[
+  {
+    "commandId": "cmd-week-1",
+    "expectedRevision": 0,
+    "type": "endWeek",
+    "args": {
+      "week": 1,
+      "actions": [
+        {
+          "type": "research",
+          "companyId": "co-tracebench",
+          "checkId": "chk-tracebench-paying-teams"
+        },
+        {
+          "type": "research",
+          "companyId": "co-tracebench",
+          "checkId": "chk-tracebench-paying-teams"
+        },
+        {
+          "type": "research",
+          "companyId": "co-rampa",
+          "checkId": "chk-rampa-customers"
+        },
+        {
+          "type": "research",
+          "companyId": "co-papirflow",
+          "checkId": "chk-papirflow-largest-customer"
+        },
+        {
+          "type": "research",
+          "companyId": "co-papirflow",
+          "checkId": "chk-papirflow-weekly-costs"
+        },
+        {
+          "type": "research",
+          "companyId": "co-papirflow",
+          "checkId": "chk-papirflow-daily-use"
+        }
+      ]
+    }
+  }
+]
