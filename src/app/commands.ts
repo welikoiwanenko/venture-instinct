@@ -14,7 +14,7 @@
 // sequence is monotonic. A rejection returns the campaign untouched: there is no
 // partial change to undo.
 
-import { deepFreeze, snapshotPlainData } from "../data/plain-data.ts";
+import { deepFreeze, isPlainRecord, snapshotPlainData } from "../data/plain-data.ts";
 import { canonicalHash, canonicalJson } from "../manifest/canonical-json.ts";
 import type { CampaignState } from "../campaign/initial-state.ts";
 import type { Campaign } from "./campaign-app.ts";
@@ -130,7 +130,8 @@ export function submitCommand(campaign: Campaign, envelope: unknown, handlers: C
   );
   const next: Campaign = Object.freeze({
     ...campaign,
-    state: outcome.state,
+    // The campaign owns its state: freeze it whole, so no alias a handler kept can change it later.
+    state: deepFreeze(outcome.state),
     revision: campaign.revision + 1,
     journal: Object.freeze([...campaign.journal, record]),
   });
@@ -154,11 +155,12 @@ function checkEnvelope(envelope: unknown, handlers: CommandHandlers): CheckedEnv
   if (snapshot.issues.length > 0) {
     return { ok: false, rejection: { code: "invalid-envelope", reasons: snapshot.issues.map((i) => `${i.path}: ${i.message}`) } };
   }
-  const value = snapshot.value;
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return reject("invalid-envelope", "command: must be an object with commandId, expectedRevision, type and args");
+  // The snapshot keeps objects with another prototype as they are; reading their
+  // fields could call inherited getters, so only plain records go further.
+  const record = snapshot.value;
+  if (!isPlainRecord(record)) {
+    return reject("invalid-envelope", "command: must be a plain object with commandId, expectedRevision, type and args");
   }
-  const record = value as Record<string, unknown>;
   const reasons: string[] = [];
   for (const key of Object.keys(record)) {
     if (!ENVELOPE_KEYS.includes(key)) reasons.push(`command.${key}: is not a known field`);
