@@ -132,7 +132,7 @@ test("the seed field takes typed text, including keys that are commands elsewher
     const intent = screenKeyIntent(input, key, inputMode(state));
     assert.ok(intent !== undefined, `no intent for ${JSON.stringify(input)}`);
     if (intent.type === "start") return intent;
-    state = update(state, intent as Exclude<Intent, { type: "start" | "quit" | "text-mode" | "scroll" | "move-company" | "open-company" }>);
+    state = update(state, intent as Exclude<Intent, { type: "start" | "quit" | "text-mode" | "scroll" | "move-company" | "open-company" | "move-plan" | "toggle-plan" | "end-week" }>);
     return intent;
   };
   press("", { return: true });
