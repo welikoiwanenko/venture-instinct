@@ -333,7 +333,7 @@ function statusFields(s: CampaignSummary | undefined, planned: number): StatusFi
   }
   return [
     { label: "Week", value: `${s.planningWeek} (${s.completedWeeks}/${s.horizonWeeks} done)` },
-    { label: "Slots", value: planned === 0 ? `${s.slotsAvailable} left` : `${s.slotsAvailable} left, ${planned} planned` },
+    { label: "Slots", value: planned === 0 ? `${s.slotsAvailable} left` : `${s.slotsAvailable - planned} left, ${planned} planned` },
     { label: "Budget", value: formatCentsAsUsd(s.capitalAvailableCents) },
   ];
 }

@@ -84,6 +84,7 @@ test("slot usage is visible and the editor cannot exceed the week's 5 slots", ()
   const removed = toggle(move(refused, -1));
   assert.equal(removed.planDraft.length, 4);
   assert.match(frame(removed), /4 of 5 slots planned · 1 left/);
+  assert.match(frame(removed), /Slots: 1 left, 4 planned/);
   assert.deepEqual(removed.planMessages, []);
 });
 
@@ -225,6 +226,6 @@ test("in an ordinary terminal the budget and a refusal stay in view while the cu
     assert.match(flat, /5 of 5 slots planned · 0 left/, `${columns}x${rows}\n${out}`);
     assert.match(flat, /No slots are left this week; remove an action to add this one\./, `${columns}x${rows}\n${out}`);
     assert.match(flat, /▸ 6 \[ \]/, `${columns}x${rows}: the selected action is still visible\n${out}`);
-    assert.match(flat, /Slots: 5 left, 5 planned/, `${columns}x${rows}\n${out}`);
+    assert.match(flat, /Slots: 0 left, 5 planned/, `${columns}x${rows}\n${out}`);
   }
 });
