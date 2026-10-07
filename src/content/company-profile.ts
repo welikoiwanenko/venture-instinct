@@ -30,6 +30,7 @@ import {
   rejectUnknownKeys,
   type ContentIssue,
 } from "./fields.ts";
+import { readResearchChecks, type ResearchCheck } from "./research-check.ts";
 
 export const SECTORS = ["developer-tools", "business-process-automation", "logistics-software"] as const;
 export type Sector = (typeof SECTORS)[number];
@@ -142,6 +143,8 @@ export interface CompanyProfile {
   /** Present exactly for inbound companies. */
   readonly application?: InboundApplication;
   readonly hidden: HiddenStartingState;
+  /** What research can find out about the company (§9.2); empty when none is authored. Internal until delivered. */
+  readonly researchChecks: readonly ResearchCheck[];
   /** Why this company is in the pack and what its trade-off is. Authors and debug only. */
   readonly authoringNote?: string;
 }
@@ -156,6 +159,7 @@ const COMPANY_KEYS = [
   "initialKnowledge",
   "application",
   "hidden",
+  "researchChecks",
   "authoringNote",
 ] as const;
 const APPLICATION_KEYS = ["authorId", "summary", "text", "claims"] as const;
@@ -229,6 +233,7 @@ export function checkCompanyProfile(value: unknown, path: string, issues: Conten
   const initialKnowledge = readEnum(record, "initialKnowledge", path, INITIAL_KNOWLEDGE, issues);
   const hidden = readHidden(record["hidden"], childPath(path, "hidden"), founders, issues);
   const application = readApplication(record["application"], childPath(path, "application"), initialKnowledge, founders, hidden, issues);
+  const researchChecks = readResearchChecks(record["researchChecks"], childPath(path, "researchChecks"), hidden, issues);
   const authoringNote = record["authoringNote"] === undefined ? undefined : readText(record, "authoringNote", path, issues);
 
   if (
@@ -240,7 +245,8 @@ export function checkCompanyProfile(value: unknown, path: string, issues: Conten
     description === undefined ||
     founders === undefined ||
     initialKnowledge === undefined ||
-    hidden === undefined
+    hidden === undefined ||
+    researchChecks === undefined
   ) {
     return undefined;
   }
@@ -254,6 +260,7 @@ export function checkCompanyProfile(value: unknown, path: string, issues: Conten
     initialKnowledge,
     ...(application === undefined ? {} : { application }),
     hidden,
+    researchChecks,
     ...(authoringNote === undefined ? {} : { authoringNote }),
   };
 }

@@ -106,23 +106,26 @@ function checkContent(value: unknown, path: string, issues: ContentIssue[]): Sce
 }
 
 /**
- * Company ids, and founder ids across all companies, must be unique in the pack. Reads
- * the raw items, so a duplicate is reported even when its profile has other issues.
+ * Company ids, and founder and research check ids across all companies, must be unique
+ * in the pack. Reads the raw items, so a duplicate is reported even when its profile has
+ * other issues.
  */
 function reportDuplicateIds(items: readonly unknown[], path: string, issues: ContentIssue[]): void {
   const companies = new Map<string, string>();
-  const founders = new Map<string, string>();
+  const nested = { founders: new Map<string, string>(), researchChecks: new Map<string, string>() };
+  const kinds = { founders: "founder", researchChecks: "research check" };
   items.forEach((item, index) => {
     if (!isPlainRecord(item)) return;
     const companyPath = childPath(path, index);
     claim(companies, item["id"], childPath(companyPath, "id"), "company", issues);
-    const list = item["founders"];
-    if (!Array.isArray(list)) return;
-    list.forEach((founder, founderIndex) => {
-      if (!isPlainRecord(founder)) return;
-      const founderPath = childPath(childPath(childPath(companyPath, "founders"), founderIndex), "id");
-      claim(founders, founder["id"], founderPath, "founder", issues);
-    });
+    for (const key of ["founders", "researchChecks"] as const) {
+      const list = item[key];
+      if (!Array.isArray(list)) continue;
+      list.forEach((entry, entryIndex) => {
+        if (!isPlainRecord(entry)) return;
+        claim(nested[key], entry["id"], childPath(childPath(childPath(companyPath, key), entryIndex), "id"), kinds[key], issues);
+      });
+    }
   });
 }
 
