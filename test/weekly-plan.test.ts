@@ -158,6 +158,16 @@ test("a plan for another week and malformed plans are rejected with readable rea
   for (const [plan, expected] of table) assert.deepEqual(reasons(validateWeeklyPlan(campaign(), plan)), expected, JSON.stringify(plan));
 });
 
+test("a sparse actions array is rejected position by position, not read as an empty plan", () => {
+  assert.deepEqual(
+    reasons(validateWeeklyPlan(campaign(), { week: 1, actions: new Array(2) })),
+    ["action 1: must be an object with a type", "action 2: must be an object with a type"],
+  );
+  const holey: unknown[] = [research("co-tracebench", "chk-tracebench-paying-teams")];
+  holey[2] = research("co-papirflow", "chk-papirflow-weekly-costs");
+  assert.deepEqual(reasons(validateWeeklyPlan(campaign(), { week: 1, actions: holey })), ["action 2: must be an object with a type"]);
+});
+
 test("available actions list each known company's checks with question, cost and arrival, never results", () => {
   const actions = availableActions(campaign());
   assert.equal(actions.week, 1);

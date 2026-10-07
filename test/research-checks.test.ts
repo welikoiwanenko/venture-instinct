@@ -184,6 +184,9 @@ test("questions may not reveal hidden truth or a verdict, in English or Ukrainia
     "Яка якість продукту?",
     "Чи є приховані витрати?",
     "Хто переможець у цьому секторі?",
+    "What is the true customer count?",
+    "Чи засновник каже правду?",
+    "Наскільки правдиві цифри в заявці?",
   ]) {
     assert.ok(forbiddenQuestionWord(text) !== undefined, text);
   }
@@ -192,8 +195,25 @@ test("questions may not reveal hidden truth or a verdict, in English or Ukrainia
     "Хто виконував ключову роботу в минулому проєкті?",
     "Who comes back after the first use?",
     "Is there a dependence on one customer?",
+    "Чи справді клієнти платять щомісяця?",
   ]) {
     assert.equal(forbiddenQuestionWord(text), undefined, text);
+  }
+});
+
+test("questions naming the truth are rejected through pack validation", () => {
+  for (const [question, word] of [
+    ["What is the true customer count?", "true"],
+    ["Чи засновник каже правду?", "правду"],
+  ]) {
+    const check = billingCheck();
+    check["question"] = question;
+    assert.deepEqual(issuesOf(withChecks(check)), [
+      {
+        path: `${CHECKS}[0].question`,
+        message: `must not contain "${word}": a question may not reveal hidden truth or a verdict by its name (§9.3)`,
+      },
+    ]);
   }
 });
 
