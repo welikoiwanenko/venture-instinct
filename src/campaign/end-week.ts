@@ -113,7 +113,7 @@ function completeResearch(
         companyId: profile.id,
         checkId: check.id,
         week: plan.week,
-        observationId: researchObservationId(profile.id, check.id, plan.week),
+        observationId: researchObservationId(check.id, plan.week),
       },
     };
   });
