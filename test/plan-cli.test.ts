@@ -92,7 +92,7 @@ test("the debug view shows the provenance of the delivered check", () => {
   assert.equal(result.code, 0, result.stderr);
   assert.match(
     result.stdout,
-    /Evidence {3}obs-co-tracebench-chk-tracebench-paying-teams-week-1: Paying customers 7 · matches the truth · shown as ✔ confirmed by this check/,
+    /Evidence {3}obs-chk-tracebench-paying-teams-week-1: Paying customers 7 · matches the truth · shown as ✔ confirmed by this check/,
   );
   assert.match(result.stdout, /obs-co-tracebench-application-paying-customers: Paying customers 19 · truth 7 · counts-pilots-as-paying: .* · shown as ⚠ conflicting evidence/);
 });
@@ -135,5 +135,22 @@ test("a malformed command is rejected with its reasons and later commands still 
   assert.equal(result.code, 1);
   assert.match(result.stdout, /✖ Rejected \(unknown-command\):\n {4}unknown command type "teleport"; known: endWeek/);
   assert.match(result.stdout, /^ {2}Plan for week 1: 0 of 5 slots, 5 left\n {4}\(no actions: the week passes\)$/m);
+  assert.match(result.stdout, /^Week {7}planning week 2; 1 of 156 completed$/m);
+});
+
+test("malformed envelope fields are reported, not thrown, and later commands still run", () => {
+  const malformed = [
+    { commandId: { toString: 0 }, expectedRevision: 0, type: "endWeek", args: { week: 1, actions: [] } },
+    { commandId: "x", expectedRevision: { valueOf: null }, type: "endWeek", args: { week: 1, actions: [] } },
+    { commandId: "y", expectedRevision: 0, type: { toString: 0 }, args: {} },
+    { commandId: "w1", expectedRevision: 0, type: "endWeek", args: { week: 1, actions: [] } },
+  ];
+  const result = cli(["--seed", "demo-1", "--scenario", PACK, "--commands", "bad.json"], { "bad.json": JSON.stringify(malformed) });
+  assert.equal(result.code, 1);
+  assert.equal(result.stderr, "");
+  assert.match(result.stdout, /^Command 1: \{"toString":0\} · endWeek · expected revision 0$/m);
+  assert.match(result.stdout, /^Command 2: x · endWeek · expected revision \{"valueOf":null\}$/m);
+  assert.match(result.stdout, /^Command 3: y · \{"toString":0\} · expected revision 0$/m);
+  assert.equal([...result.stdout.matchAll(/✖ Rejected \(invalid-envelope\):/g)].length, 3);
   assert.match(result.stdout, /^Week {7}planning week 2; 1 of 156 completed$/m);
 });

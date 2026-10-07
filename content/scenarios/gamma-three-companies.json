@@ -159,16 +159,16 @@
           {
             "id": "chk-papirflow-daily-use",
             "direction": "product",
-            "question": "Чи погоджують клієнти рахунки в Papirflow щодня, як описано в заявці?",
+            "question": "Чи погоджують клієнти рахунки в Papirflow щодня?",
             "evidence": {"source": "Журнал використання продукту", "period": {"fromWeek": -8, "toWeek": 0}},
             "result": {"kind": "text", "title": "Щодня продуктом користується меншість клієнтів", "text": "Найактивніший користувач — регіональний дистрибутор із кількома складами: через Papirflow проходять майже всі його рахунки. Ще кілька клієнтів погоджують у сервісі більшість рахунків. Решта заходить раз на тиждень або рідше й переносить дані в облікову систему вручну, бо інтеграції з їхньою системою ще немає. Скарги в журналі підтримки здебільшого стосуються саме ручного експорту."}
           },
           {
             "id": "chk-papirflow-new-clients",
             "direction": "growth-quality",
-            "question": "Звідки приходять нові клієнти?",
+            "question": "Звідки приходять нові потенційні клієнти?",
             "evidence": {"source": "CRM Papirflow", "period": {"fromWeek": -12, "toWeek": 0}},
-            "result": {"kind": "text", "title": "Нові клієнти приходять через особисті контакти Тараса", "text": "За квартал у CRM з'являлося приблизно чотири нові потенційні клієнти на тиждень. Майже всі вони прийшли через колишніх колег і клієнтів Тараса Коваленка з часів продажу ERP. Вхідних заявок із сайту чи реклами майже немає. Цикл угоди — від шести до десяти тижнів, і Тарас веде кожну угоду особисто."}
+            "result": {"kind": "text", "title": "Нові потенційні клієнти приходять через особисті контакти Тараса", "text": "За квартал у CRM з'являлося приблизно чотири нові потенційні клієнти на тиждень. Майже всі вони прийшли через колишніх колег і клієнтів Тараса Коваленка з часів продажу ERP. Вхідних заявок із сайту чи реклами майже немає. Цикл угоди — від шести до десяти тижнів, і Тарас веде кожну угоду особисто."}
           }
         ],
         "authoringNote": "Trade-off: real revenue, the most cash, a strong seller and aligned founders, but one customer is almost half of revenue, the product is built by contractors, and fit is mediocre. The application understates both the concentration and the burn. The revenue figure is honest, so the gap only shows once the player checks customers or costs."

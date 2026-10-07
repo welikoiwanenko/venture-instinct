@@ -246,7 +246,9 @@ export function normalizePlan(input: unknown): { readonly ok: true; readonly pla
   if (!Array.isArray(items)) {
     reasons.push("plan.actions: must be a list of actions (it may be empty)");
   } else {
-    items.forEach((item, index) => {
+    // Array.from visits every index, so a hole (a sparse array from a JS caller) is
+    // read as undefined and rejected instead of being skipped by forEach.
+    Array.from(items).forEach((item, index) => {
       const label = `action ${index + 1}`;
       if (!isPlainRecord(item)) {
         reasons.push(`${label}: must be an object with a type`);

@@ -161,7 +161,7 @@ export function formatCommand(entry: CommandLogEntry, index: number): string {
   const { envelope, review, submitted, after } = entry;
   const fields = typeof envelope === "object" && envelope !== null ? (envelope as Record<string, unknown>) : {};
   const lines = [
-    `Command ${index + 1}: ${String(fields["commandId"] ?? "(no id)")} · ${String(fields["type"] ?? "(no type)")} · expected revision ${String(fields["expectedRevision"] ?? "?")}`,
+    `Command ${index + 1}: ${shown(fields["commandId"], "(no id)")} · ${shown(fields["type"], "(no type)")} · expected revision ${shown(fields["expectedRevision"], "?")}`,
   ];
   if (review !== undefined) lines.push(...formatPlanReview(review).map((line) => `  ${line}`));
   if (!submitted.ok) {
@@ -179,6 +179,21 @@ export function formatCommand(entry: CommandLogEntry, index: number): string {
     );
   }
   return lines.join("\n");
+}
+
+/**
+ * A field of an envelope as read from the file, which may be any JSON value: strings
+ * and numbers as they are, anything else as JSON. Never throws, so a malformed command
+ * still gets its rejection report.
+ */
+function shown(value: unknown, missing: string): string {
+  if (value === undefined) return missing;
+  if (typeof value === "string" || typeof value === "number") return String(value);
+  try {
+    return JSON.stringify(value) ?? missing;
+  } catch {
+    return "(unreadable)";
+  }
 }
 
 /** The one review before End Week (§6.1): actions, slot costs, slots left and unanswered deadlines. */
