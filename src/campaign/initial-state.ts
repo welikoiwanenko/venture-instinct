@@ -27,6 +27,17 @@ export interface CampaignState {
    * player-facing half.
    */
   readonly observations: ObservationLog;
+  /** Research already delivered, oldest first (§9.2): a delivered check is not offered as a paid action again. */
+  readonly research: readonly ResearchRecord[];
+}
+
+/** One delivered research check: what was checked, the week it ran and the observation it produced. */
+export interface ResearchRecord {
+  readonly companyId: string;
+  readonly checkId: string;
+  /** The week whose plan held the research; the result arrived at its end. */
+  readonly week: Week;
+  readonly observationId: string;
 }
 
 export function createInitialCampaignState(config: CampaignConfig, companies: readonly CompanyProfile[]): CampaignState {
@@ -40,5 +51,6 @@ export function createInitialCampaignState(config: CampaignConfig, companies: re
     companies: initialCompanyStates(companies),
     // The week 1 inbound wave is on the player's desk when planning starts (§5, §8.1).
     observations: deliverInboundApplications(EMPTY_OBSERVATION_LOG, companies, planningWeek),
+    research: Object.freeze([]),
   });
 }
