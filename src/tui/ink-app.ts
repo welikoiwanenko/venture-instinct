@@ -94,6 +94,7 @@ export function ScreenView({ state, context, columns, rows }: ScreenViewProps): 
     { flexDirection: "column", flexGrow: 1, paddingX: layout.narrow ? 0 : 1 },
     // One row always: a long card title with the line counter is cut, not wrapped.
     h(Text, { wrap: "truncate-end" }, h(Text, { bold: true, inverse: contentFocused }, title), h(Text, { dimColor: true }, more)),
+    ...layout.pinned.map((line, i) => h(Text, { key: `pinned-${i}`, bold: i === 0 }, line === "" ? " " : line)),
     ...body.map((line, i) => h(Text, { key: i }, line === "" ? " " : line)),
   );
 
@@ -171,6 +172,8 @@ interface Layout {
   readonly planRows: Screen["planRows"];
   readonly slotsLeft: number;
   readonly narrow: boolean;
+  /** Wrapped lines kept above the scrolling body. */
+  readonly pinned: readonly string[];
   readonly lines: readonly string[];
   readonly viewport: number;
   readonly maxScroll: number;
@@ -196,9 +199,11 @@ function layoutFor(columns: number, rows: number, state: TuiState, context: Scre
     rows - wideChrome < SECTIONS.length - 1;
   const source = state.helpOpen ? helpLines() : screen.body;
   const lines = wrapLines(source, narrow ? columns : columns - WIDE_CHROME_COLUMNS);
+  // Pinned lines sit between the title and the body and take rows from the viewport.
+  const pinned = state.helpOpen ? [] : wrapLines(screen.pinned, narrow ? columns : columns - WIDE_CHROME_COLUMNS);
   const queueLines = wrapLines([`Decision queue: ${screen.queue}`], columns).length;
   const narrowChrome = 4 + queueLines + packItems(statusItems(screen), columns).length + hints;
-  const viewport = Math.max(1, rows - (narrow ? narrowChrome : wideChrome));
+  const viewport = Math.max(1, rows - (narrow ? narrowChrome : wideChrome) - pinned.length);
   const maxScroll = Math.max(0, lines.length - viewport);
   let offset = state.helpOpen ? 0 : Math.min(state.scroll[state.section], maxScroll);
   if (!state.helpOpen && screen.selected !== undefined) {
@@ -209,5 +214,5 @@ function layoutFor(columns: number, rows: number, state: TuiState, context: Scre
     if (end > offset + viewport) offset = end - viewport;
     if (start < offset) offset = start;
   }
-  return { companyCount: screen.companyCount, planRows: screen.planRows, slotsLeft: screen.slotsLeft, narrow, lines, viewport, maxScroll, offset };
+  return { companyCount: screen.companyCount, planRows: screen.planRows, slotsLeft: screen.slotsLeft, narrow, pinned, lines, viewport, maxScroll, offset };
 }

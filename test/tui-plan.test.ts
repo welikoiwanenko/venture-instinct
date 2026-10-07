@@ -152,7 +152,7 @@ test("an invalid plan is rejected with the player-visible reason and no time pas
   assert.equal(inspectCampaign(rejected.campaign!).planningWeek, 2);
   assert.equal(rejected.reviewOpen, false);
   assert.deepEqual(rejected.planDraft, drafted.planDraft, "the draft stays for the player to fix");
-  assert.match(body(rejected), /✖ The week did not end:\n[\s\S]*you already have the result/);
+  assert.match(buildScreen(rejected, CONTEXT).pinned.join("\n"), /✖ The week did not end:\n[\s\S]*you already have the result/);
 });
 
 test("an empty plan ends the week too", () => {
@@ -208,5 +208,23 @@ test("the plan editor and review fit a narrow window and keep the cursor visible
     assert.ok(lines.length <= 20, out);
     for (const line of lines) assert.ok([...line].length <= 40, `too wide: ${line}`);
     if (!s.reviewOpen) assert.match(out, /▸ 8 {2}\[ \]/, out);
+  }
+});
+
+test("in an ordinary terminal the budget and a refusal stay in view while the cursor is far down", () => {
+  for (const [columns, rows] of [
+    [80, 24],
+    [40, 20],
+  ] as const) {
+    let state = atPlan();
+    for (let i = 0; i < 5; i++) state = move(toggle(state), 1);
+    const refused = toggle(state);
+    const out = renderToString(createElement(ScreenView, { state: refused, context: CONTEXT, columns, rows }), { columns });
+    const flat = out.replace(/[│\s]+/g, " ");
+    assert.ok(out.split("\n").length <= rows, out);
+    assert.match(flat, /5 of 5 slots planned · 0 left/, `${columns}x${rows}\n${out}`);
+    assert.match(flat, /No slots are left this week; remove an action to add this one\./, `${columns}x${rows}\n${out}`);
+    assert.match(flat, /▸ 6 \[ \]/, `${columns}x${rows}: the selected action is still visible\n${out}`);
+    assert.match(flat, /Slots: 5 left, 5 planned/, `${columns}x${rows}\n${out}`);
   }
 });

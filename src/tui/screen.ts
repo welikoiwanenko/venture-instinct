@@ -51,6 +51,11 @@ export interface Screen {
   /** "3 of 7" */
   readonly position: string;
   readonly body: readonly string[];
+  /**
+   * Lines kept above the scrolling body, always in view: the Plan's slot budget and what
+   * the last edit or End Week said, so a refusal is never scrolled away.
+   */
+  readonly pinned: readonly string[];
   /** Known companies, for the Companies cursor; 0 without a campaign. */
   readonly companyCount: number;
   /** Actions offered in the Plan list, in display order, for the Plan cursor; empty without a campaign. */
@@ -288,8 +293,9 @@ export function buildScreen(state: TuiState, context: ScreenContext): Screen {
         : planEditor(state, actions, view, planRows, slotsLeft, context)
       : undefined;
   const selected = list?.selected ?? (plan !== undefined && "selected" in plan ? plan.selected : undefined);
+  const planned = actions === undefined ? 0 : actions.slotsAvailable - slotsLeft;
   return {
-    status: statusFields(summary),
+    status: statusFields(summary, planned),
     queue: "○ Nothing needs you",
     nav: SECTIONS.map((s) => ({ id: s.id, key: s.key, title: s.title, active: s.id === state.section })),
     title: section.id === "companies" && open !== undefined ? `${section.title} › ${companyName(open)}` : section.title,
@@ -308,6 +314,7 @@ export function buildScreen(state: TuiState, context: ScreenContext): Screen {
             : section.id === "inbox" && view !== undefined
               ? inbox(view)
               : PLACEHOLDERS[section.id],
+    pinned: plan !== undefined && "pinned" in plan ? plan.pinned : [],
     companyCount: view?.companies.length ?? 0,
     planRows,
     slotsLeft,
@@ -315,7 +322,8 @@ export function buildScreen(state: TuiState, context: ScreenContext): Screen {
   };
 }
 
-function statusFields(s: CampaignSummary | undefined): StatusField[] {
+/** `planned` is the slot cost of the TUI's draft plan, shown next to the week's slots. */
+function statusFields(s: CampaignSummary | undefined, planned: number): StatusField[] {
   if (s === undefined) {
     return [
       { label: "Week", value: "— no campaign" },
@@ -325,7 +333,7 @@ function statusFields(s: CampaignSummary | undefined): StatusField[] {
   }
   return [
     { label: "Week", value: `${s.planningWeek} (${s.completedWeeks}/${s.horizonWeeks} done)` },
-    { label: "Slots", value: `${s.slotsAvailable} left` },
+    { label: "Slots", value: planned === 0 ? `${s.slotsAvailable} left` : `${s.slotsAvailable} left, ${planned} planned` },
     { label: "Budget", value: formatCentsAsUsd(s.capitalAvailableCents) },
   ];
 }
@@ -494,17 +502,16 @@ function planEditor(
   rows: readonly PlanRow[],
   slotsLeft: number,
   context: ScreenContext,
-): { lines: string[]; selected?: { start: number; end: number } } {
+): { pinned: string[]; lines: string[]; selected?: { start: number; end: number } } {
   const used = actions.slotsAvailable - slotsLeft;
   const spec = actions.catalogue.research;
+  const pinned = [`Week ${actions.week} plan · ${used} of ${actions.slotsAvailable} slots planned · ${slotsLeft} left`, ...state.planMessages];
   const lines = [
-    `Week ${actions.week} plan · ${used} of ${actions.slotsAvailable} slots planned · ${slotsLeft} left`,
     `${spec.title}: ${spec.slotCost} slot each; needs ${spec.prerequisites}. Results arrive at the end of week ${actions.week}; read them in week ${actions.week + 1}.`,
     context.linear === true
       ? "Type add or remove and a number, e.g. add 1; then review, and end."
       : "Choose with ↑/↓; Enter or Space adds or removes; r reviews the plan before End Week.",
   ];
-  if (state.planMessages.length > 0) lines.push("", ...state.planMessages);
   let selected: { start: number; end: number } | undefined;
   let index = 0;
   for (const company of actions.research) {
@@ -527,7 +534,7 @@ function planEditor(
   }
   if (rows.length === 0) lines.push("", "No research is available this week. You can still end the week: r, then Enter.");
   if (view.companies.length === 0) lines.push("", "You do not know any companies yet.");
-  return selected === undefined ? { lines } : { lines, selected };
+  return selected === undefined ? { pinned, lines } : { pinned, lines, selected };
 }
 
 /** The one review before End Week (§6.1, §15), or every reason the draft cannot end it. */
@@ -603,6 +610,8 @@ export function renderLinear(screen: Screen): string {
     ...screen.status.map((f) => `${f.label}: ${f.value}`),
     `Decision queue: ${screen.queue}`,
     "",
+    ...screen.pinned,
+    ...(screen.pinned.length === 0 ? [] : [""]),
     ...screen.body,
     "",
     `Sections: ${screen.nav.map((n) => `${n.key} ${n.title}${n.active ? " (current)" : ""}`).join(", ")}`,
