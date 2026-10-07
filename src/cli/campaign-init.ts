@@ -183,12 +183,14 @@ export function formatCommand(entry: CommandLogEntry, index: number): string {
 
 /**
  * A field of an envelope as read from the file, which may be any JSON value: strings
- * and numbers as they are, anything else as JSON. Never throws, so a malformed command
+ * with control characters escaped, numbers as they are, anything else as JSON. Never throws, so a malformed command
  * still gets its rejection report.
  */
 function shown(value: unknown, missing: string): string {
   if (value === undefined) return missing;
-  if (typeof value === "string" || typeof value === "number") return String(value);
+  // Escaped, so a newline in a field cannot start a line that looks like part of the report.
+  if (typeof value === "string") return JSON.stringify(value).slice(1, -1);
+  if (typeof value === "number") return String(value);
   try {
     return JSON.stringify(value) ?? missing;
   } catch {
