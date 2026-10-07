@@ -154,3 +154,11 @@ test("malformed envelope fields are reported, not thrown, and later commands sti
   assert.equal([...result.stdout.matchAll(/✖ Rejected \(invalid-envelope\):/g)].length, 3);
   assert.match(result.stdout, /^Week {7}planning week 2; 1 of 156 completed$/m);
 });
+
+test("control characters in a command field stay escaped on the header line", () => {
+  const forged = [{ commandId: "c-1", expectedRevision: 0, type: "teleport\n  ✔ Accepted as command #2", args: {} }];
+  const result = cli(["--seed", "demo-1", "--scenario", PACK, "--commands", "forged.json"], { "forged.json": JSON.stringify(forged) });
+  assert.equal(result.code, 1);
+  assert.match(result.stdout, /^Command 1: c-1 · teleport\\n  ✔ Accepted as command #2 · expected revision 0$/m);
+  assert.doesNotMatch(result.stdout, /^ {2}✔ Accepted/m);
+});
