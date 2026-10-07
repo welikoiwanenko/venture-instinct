@@ -101,3 +101,65 @@ test("names and public descriptions do not reveal the hidden state or an outcome
     assert.doesNotMatch(company.description, telling, company.id);
   }
 });
+
+// VI-30: research checks for the two companies the player knows (design §5, §9.2, §14.1).
+
+test("each known company has 3–4 checks covering at least three §9.2 directions; Rampa has none", () => {
+  for (const company of companies()) {
+    const checks = company.researchChecks;
+    if (company.initialKnowledge === "unknown") {
+      assert.deepEqual(checks, [], `${company.id} is unknown to the player in Delta`);
+      continue;
+    }
+    assert.ok(checks.length >= 3 && checks.length <= 4, `${company.id}: ${checks.length} checks`);
+    assert.ok(new Set(checks.map((c) => c.direction)).size >= 3, `${company.id}: directions`);
+  }
+});
+
+test("every check result describes week 0 or earlier and its figure matches the truth or has a reason", () => {
+  for (const company of companies()) {
+    for (const check of company.researchChecks) {
+      assert.ok(check.evidence.period.toWeek <= 0, check.id);
+      if (check.result.kind !== "metric") continue;
+      const truth = trueMetricValue(company.hidden, check.result.metric);
+      assert.ok(check.result.value === truth || check.result.distortion !== undefined, check.id);
+    }
+  }
+});
+
+test("each known company has a check that contradicts its application", () => {
+  for (const company of companies()) {
+    if (company.application === undefined) continue;
+    const contradicted = company.researchChecks.filter((check) => {
+      const result = check.result;
+      if (result.kind !== "metric") return false;
+      return company.application!.claims.some((claim) => claim.metric === result.metric && claim.value !== result.value);
+    });
+    assert.ok(contradicted.length >= 1, `${company.id}: no check contradicts the application`);
+  }
+  const byId = new Map(companies().flatMap((c) => c.researchChecks.map((check) => [check.id, check] as const)));
+  assert.deepEqual(byId.get("chk-tracebench-paying-teams")?.result, { kind: "metric", metric: "payingCustomers", value: 7 });
+  assert.deepEqual(byId.get("chk-papirflow-largest-customer")?.result, { kind: "metric", metric: "largestCustomerShareBps", value: 4700 });
+  assert.deepEqual(byId.get("chk-papirflow-weekly-costs")?.result, { kind: "metric", metric: "weeklyBurnCents", value: 2_060_000 });
+});
+
+test("the pack has a could-not-get-the-data result and text evidence for team or product", () => {
+  const checks = companies().flatMap((c) => c.researchChecks);
+  const unavailable = checks.filter((c) => c.result.kind === "unavailable");
+  assert.ok(unavailable.length >= 1);
+  for (const check of unavailable) {
+    // The reason explains access, not deception (§9.2).
+    assert.doesNotMatch(check.result.kind === "unavailable" ? check.result.reason : "", /прихову|бреш|обман|відмовил/i, check.id);
+  }
+  assert.ok(checks.some((c) => (c.direction === "team" || c.direction === "product") && c.result.kind === "text"));
+});
+
+test("no check reveals a future outcome or a verdict", () => {
+  const telling = /найкращ|найгірш|успіш|провал|банкрут|перемож|приречен|якіст|оцінк|рейтинг|прогноз|буде |станеться|best|worst|winner|doomed|fail/i;
+  for (const check of companies().flatMap((c) => c.researchChecks)) {
+    const texts = [check.question, check.evidence.source];
+    if (check.result.kind === "text") texts.push(check.result.title, check.result.text);
+    if (check.result.kind === "unavailable") texts.push(check.result.reason);
+    for (const text of texts) assert.doesNotMatch(text, telling, check.id);
+  }
+});

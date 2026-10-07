@@ -1,8 +1,8 @@
 {
   "id": "poc-gamma-three-companies",
-  "contentVersion": 1,
+  "contentVersion": 2,
   "content": {
-    "purpose": "Gamma baseline: three companies, one per sector. Two apply in the week 1 inbound wave; one exists in the world but is not known to the player.",
+    "purpose": "Gamma baseline: three companies, one per sector. Two apply in the week 1 inbound wave; one exists in the world but is not known to the player. The two known companies have research checks; Rampa has none while it is unknown.",
     "companies": [
       {
         "id": "co-tracebench",
@@ -54,6 +54,36 @@
           ],
           "strategy": "product"
         },
+        "researchChecks": [
+          {
+            "id": "chk-tracebench-paying-teams",
+            "direction": "customers",
+            "question": "Скільки команд справді оплатили рахунок за останній місяць?",
+            "evidence": {"source": "Платіжні дані Tracebench за місяць", "period": {"fromWeek": -3, "toWeek": 0}},
+            "result": {"kind": "metric", "metric": "payingCustomers", "value": 7}
+          },
+          {
+            "id": "chk-tracebench-oss-funnel",
+            "direction": "growth-quality",
+            "question": "Чи приходять нові команди з open-source утиліти, і чи доходять вони до оплати?",
+            "evidence": {"source": "Публічний репозиторій утиліти та форма заявки на пілот", "period": {"fromWeek": -12, "toWeek": 0}},
+            "result": {"kind": "text", "title": "Утиліта щотижня приводить кілька команд на пілот", "text": "Утиліту для аналізу логів справді використовують: за квартал понад сотню нових зірок і стабільні обговорення в issues від інженерів різних компаній. Посилання з утиліти приводить у середньому дев'ять заявок на пілот щотижня. Більшість пілотів безкоштовні й тривають до двох місяців; з'ясувати з цих даних, скільки з них переходять на оплату, не вдалося. Великих компаній серед авторів заявок майже немає: здебільшого це команди з п'яти–двадцяти інженерів."}
+          },
+          {
+            "id": "chk-tracebench-core-authors",
+            "direction": "team",
+            "question": "Хто з засновників написав ядро аналізатора і хто спілкується з клієнтами?",
+            "evidence": {"source": "Історія комітів і публічне листування в issues", "period": {"fromWeek": -52, "toWeek": 0}},
+            "result": {"kind": "text", "title": "Ядро пише Ірина, з клієнтами переписується Остап", "text": "За останній рік Ірина Мельник автор більшості змін в аналізаторі, Остап Гнатюк — в інтеграціях із GitHub Actions і GitLab CI. Остап також відповідає клієнтам у листуванні, зазвичай увечері. Окремої людини для продажів немає. У публічному issue Остап пообіцяв відкрити код аналізатора «найближчим часом», а Ірина пізніше закрила обговорення коментарем, що рішення ще не ухвалене."}
+          },
+          {
+            "id": "chk-tracebench-largest-customer",
+            "direction": "customers",
+            "question": "Яку частку виручки дає найбільший клієнт?",
+            "evidence": {"source": "Розбивка платежів за клієнтами", "period": {"fromWeek": -3, "toWeek": 0}},
+            "result": {"kind": "unavailable", "reason": "Платіжний сервіс Tracebench показує лише загальні суми, а договори з клієнтами забороняють розкривати платежі окремої команди без її згоди. Засновники запропонували повернутися до цього питання після підписання угоди про конфіденційність."}
+          }
+        ],
         "authoringNote": "Trade-off: the strongest product fit and organic lead flow in the pack, but a low price, no commercial founder, and an unresolved open-core conflict between the two founders. The application counts free pilots as paying customers. Revenue and team size are stated honestly, so $1,260 a week from 19 \"paying\" teams (about $66 each) is a hint worth checking."
       },
       {
@@ -111,6 +141,36 @@
           "unresolvedConflicts": [],
           "strategy": "growth"
         },
+        "researchChecks": [
+          {
+            "id": "chk-papirflow-largest-customer",
+            "direction": "customers",
+            "question": "Яку частку виручки дає найбільший клієнт за договорами?",
+            "evidence": {"source": "Реєстр договорів і рахунків Papirflow", "period": {"fromWeek": -3, "toWeek": 0}},
+            "result": {"kind": "metric", "metric": "largestCustomerShareBps", "value": 4700}
+          },
+          {
+            "id": "chk-papirflow-weekly-costs",
+            "direction": "team",
+            "question": "Скільки компанія витрачає на тиждень разом із розробниками продукту?",
+            "evidence": {"source": "Банківська виписка Papirflow за місяць", "period": {"fromWeek": -3, "toWeek": 0}},
+            "result": {"kind": "metric", "metric": "weeklyBurnCents", "value": 2060000}
+          },
+          {
+            "id": "chk-papirflow-daily-use",
+            "direction": "product",
+            "question": "Чи погоджують клієнти рахунки в Papirflow щодня?",
+            "evidence": {"source": "Журнал використання продукту", "period": {"fromWeek": -8, "toWeek": 0}},
+            "result": {"kind": "text", "title": "Щодня продуктом користується меншість клієнтів", "text": "Найактивніший користувач — регіональний дистрибутор із кількома складами: через Papirflow проходять майже всі його рахунки. Ще кілька клієнтів погоджують у сервісі більшість рахунків. Решта заходить раз на тиждень або рідше й переносить дані в облікову систему вручну, бо інтеграції з їхньою системою ще немає. Скарги в журналі підтримки здебільшого стосуються саме ручного експорту."}
+          },
+          {
+            "id": "chk-papirflow-new-clients",
+            "direction": "growth-quality",
+            "question": "Звідки приходять нові потенційні клієнти?",
+            "evidence": {"source": "CRM Papirflow", "period": {"fromWeek": -12, "toWeek": 0}},
+            "result": {"kind": "text", "title": "Нові потенційні клієнти приходять через особисті контакти Тараса", "text": "За квартал у CRM з'являлося приблизно чотири нові потенційні клієнти на тиждень. Майже всі вони прийшли через колишніх колег і клієнтів Тараса Коваленка з часів продажу ERP. Вхідних заявок із сайту чи реклами майже немає. Цикл угоди — від шести до десяти тижнів, і Тарас веде кожну угоду особисто."}
+          }
+        ],
         "authoringNote": "Trade-off: real revenue, the most cash, a strong seller and aligned founders, but one customer is almost half of revenue, the product is built by contractors, and fit is mediocre. The application understates both the concentration and the burn. The revenue figure is honest, so the gap only shows once the player checks customers or costs."
       },
       {
