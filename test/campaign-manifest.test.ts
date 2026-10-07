@@ -92,16 +92,16 @@ test("technical fixture manifest is pinned", () => {
   // Re-pinned in VI-26 with math v2 and config v2 (money moved from dollars to cents),
   // and in VI-14/VI-17 with simulation v2 (the initial state lists the pack's companies
   // and holds the player's observation log), and in VI-31 with simulation v3 (the
-  // state records delivered research).
+  // state records delivered research) and simulation v4 in VI-32 (End Week).
   const manifest = build();
   assert.deepEqual(
     { ...manifest, config: undefined, initialState: undefined },
     {
       format: 1,
-      campaignId: "cmp-ee8e0e1e5f894343",
+      campaignId: "cmp-fcb612eb179cbc19",
       seed: SEED,
       scenario: { id: "technical-fixture-empty", contentHash: "sha256:de3bf02e2a9814fb9e6f96614bad51c55d9a1a1ba0ac385628270e5f9fe4924e" },
-      versions: { simulation: 3, content: 1, config: 2, rng: 1, math: 2 },
+      versions: { simulation: 4, content: 1, config: 2, rng: 1, math: 2 },
       config: undefined,
       configHash: "sha256:6a46363af32aecdb1a886086b944088c3bcdb1388e10b910717308db9f9c8627",
       initialState: undefined,

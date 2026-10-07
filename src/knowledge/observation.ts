@@ -37,7 +37,7 @@ export type SourceKind = (typeof SOURCE_KINDS)[number];
 
 export interface ObservationSource {
   readonly kind: SourceKind;
-  /** Who said it: a founder id, a publication, or the check that produced it. */
+  /** Who said it: a founder id, a publication, or the evidence a check read (its player-facing source). */
   readonly author: string;
 }
 
@@ -114,8 +114,9 @@ export type AppendResult =
 
 /**
  * Observation ids are derived from authored ids plus a suffix (src/knowledge/inbound.ts:
- * "obs-" + a 64-character company id + "-application-largest-customer-share-bps" is 107),
- * so they may be longer than authored ids.
+ * "obs-" + a 64-character company id + "-application-largest-customer-share-bps" is 107;
+ * research, src/campaign/research.ts, is at most 77), so they may be longer than
+ * authored ids.
  */
 export const OBSERVATION_ID_MAX_LENGTH = 128;
 

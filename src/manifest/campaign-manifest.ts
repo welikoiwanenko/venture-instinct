@@ -31,7 +31,8 @@ export interface EngineVersions {
 // simulation v2: the initial state lists every company of the pack with its §8.3
 // dimensions and holds the player's observation log with the week 1 applications.
 // simulation v3: the state records delivered research (empty at the start).
-export const ENGINE_VERSIONS: EngineVersions = Object.freeze({ simulation: 3, rng: 1, math: 2 });
+// simulation v4: End Week (§6.2) moves time and completes research.
+export const ENGINE_VERSIONS: EngineVersions = Object.freeze({ simulation: 4, rng: 1, math: 2 });
 
 export const MANIFEST_FORMAT = 1;
 

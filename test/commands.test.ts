@@ -1,6 +1,6 @@
 // VI-28: one command entry point with idempotent ids, a campaign revision and a journal
-// (docs/design-doc.md §17.2, §17.3, §18). The game has no command yet, so these tests
-// use a trivial "add-note" type that only exists here.
+// (docs/design-doc.md §17.2, §17.3, §18). The envelope rules do not depend on the
+// command, so these tests use a trivial "add-note" type that only exists here.
 
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -230,8 +230,9 @@ test("read-only API calls never change the revision or the state hash", () => {
   assert.equal(inspectCampaign(c).revision, 1);
 });
 
-test("the game has no command types until End Week", () => {
+test("the game's command types are End Week only; a test type is unknown to it", () => {
   const result = rejected(submitCommand(campaign(), note("c-1", 0)));
   assert.equal(result.rejection.code, "unknown-command");
-  assert.deepEqual(Object.keys(COMMAND_HANDLERS), []);
+  assert.match(result.rejection.reasons[0] ?? "", /known: endWeek/);
+  assert.deepEqual(Object.keys(COMMAND_HANDLERS), ["endWeek"]);
 });

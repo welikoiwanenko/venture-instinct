@@ -57,6 +57,7 @@ export {
   type PlanValidation,
   type WeeklyPlan,
 } from "../campaign/weekly-plan.ts";
+export type { EndWeekResult } from "../campaign/end-week.ts";
 export {
   submitCommand,
   type CommandEnvelope,
