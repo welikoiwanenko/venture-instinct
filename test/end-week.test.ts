@@ -55,14 +55,14 @@ test("ending week 1 with research delivers the result for week 2 and marks the c
     planningWeek: 2,
     slotsSpent: 1,
     slotsDiscarded: 4,
-    delivered: ["obs-co-tracebench-chk-tracebench-paying-teams-week-1"],
+    delivered: ["obs-chk-tracebench-paying-teams-week-1"],
   });
   assert.equal(record.stateHash, summary.stateHash);
 
   const tracebench = viewAsPlayer(next).companies.find((c) => c.companyId === "co-tracebench");
-  const result = tracebench?.observations.find((o) => o.observationId === "obs-co-tracebench-chk-tracebench-paying-teams-week-1");
+  const result = tracebench?.observations.find((o) => o.observationId === "obs-chk-tracebench-paying-teams-week-1");
   assert.deepEqual(result, {
-    observationId: "obs-co-tracebench-chk-tracebench-paying-teams-week-1",
+    observationId: "obs-chk-tracebench-paying-teams-week-1",
     companyId: "co-tracebench",
     source: { kind: "check", author: "Платіжні дані Tracebench за місяць" },
     receivedWeek: 1,
@@ -76,7 +76,7 @@ test("ending week 1 with research delivers the result for week 2 and marks the c
   // The honest revenue claim is untouched.
   assert.equal(tracebench?.observations.find((o) => o.observationId === "obs-co-tracebench-application-weekly-revenue-cents")?.status, "founder-claim");
   assert.deepEqual(next.state.research, [
-    { companyId: "co-tracebench", checkId: "chk-tracebench-paying-teams", week: 1, observationId: "obs-co-tracebench-chk-tracebench-paying-teams-week-1" },
+    { companyId: "co-tracebench", checkId: "chk-tracebench-paying-teams", week: 1, observationId: "obs-chk-tracebench-paying-teams-week-1" },
   ]);
 });
 
@@ -90,18 +90,18 @@ test("text and could-not-get-the-data results become text observations; provenan
   );
   const view = viewAsPlayer(next);
   const byId = new Map(view.companies.flatMap((c) => c.observations.map((o) => [o.observationId, o] as const)));
-  const unavailable = byId.get("obs-co-tracebench-chk-tracebench-largest-customer-week-1");
+  const unavailable = byId.get("obs-chk-tracebench-largest-customer-week-1");
   assert.equal(unavailable?.content.kind, "text");
   assert.ok(unavailable?.content.kind === "text" && unavailable.content.title === "Не вдалося отримати дані");
-  assert.ok(byId.get("obs-co-papirflow-chk-papirflow-daily-use-week-1")?.content.kind === "text");
+  assert.ok(byId.get("obs-chk-papirflow-daily-use-week-1")?.content.kind === "text");
   assert.equal(byId.get("obs-co-papirflow-application-weekly-burn-cents")?.status, "conflicting-evidence");
   // The player view never carries the truth or a reason.
   const json = canonicalJson(view);
   for (const secret of ["provenance", "fact", "distortion", "excludes-contractor-costs"]) assert.ok(!json.includes(secret), secret);
   // The debug view shows where the delivered figure came from.
   const debug = viewForDebug(next).companies.find((c) => c.profile.id === "co-papirflow");
-  const costs = debug?.observations.find((o) => o.observation.observationId === "obs-co-papirflow-chk-papirflow-weekly-costs-week-1");
-  assert.deepEqual(costs?.provenance, { observationId: "obs-co-papirflow-chk-papirflow-weekly-costs-week-1", fact: { value: 2_060_000 } });
+  const costs = debug?.observations.find((o) => o.observation.observationId === "obs-chk-papirflow-weekly-costs-week-1");
+  assert.deepEqual(costs?.provenance, { observationId: "obs-chk-papirflow-weekly-costs-week-1", fact: { value: 2_060_000 } });
 });
 
 test("an invalid plan is rejected whole: no time passes, no slot is spent, revision and hash unchanged", () => {
@@ -154,9 +154,9 @@ test("the same seed, pack and commands give the same state hash and observation 
   assert.deepEqual(
     a.state.research.map((r) => r.observationId),
     [
-      "obs-co-tracebench-chk-tracebench-paying-teams-week-1",
-      "obs-co-papirflow-chk-papirflow-largest-customer-week-1",
-      "obs-co-tracebench-chk-tracebench-core-authors-week-2",
+      "obs-chk-tracebench-paying-teams-week-1",
+      "obs-chk-papirflow-largest-customer-week-1",
+      "obs-chk-tracebench-core-authors-week-2",
     ],
   );
   assert.equal(inspectCampaign(a).planningWeek, 4);
@@ -207,5 +207,28 @@ test("research on the longest allowed company and check ids still delivers", () 
   assert.ok(result.ok);
   const { record } = accepted(endWeek(result.campaign, "w1", [research(companyId, checkId)]));
   const [id] = (record.result as { delivered: string[] }).delivered;
-  assert.equal(id?.length, 4 + 64 + 1 + 64 + "-week-1".length);
+  assert.equal(id, `obs-${checkId}-week-1`);
+});
+
+test("company and check ids that join to the same text still deliver two distinct results", () => {
+  // "co-a" + "b-c" and "co-a-b" + "c" would both read "co-a-b-c" if the two ids were joined.
+  const colliding = pack();
+  const [tracebench, papirflow] = colliding["content"]["companies"];
+  tracebench["id"] = "co-a";
+  tracebench["researchChecks"] = [tracebench["researchChecks"][0]];
+  tracebench["researchChecks"][0]["id"] = "b-c";
+  papirflow["id"] = "co-a-b";
+  papirflow["researchChecks"] = [papirflow["researchChecks"][0]];
+  papirflow["researchChecks"][0]["id"] = "c";
+  const result = initializeCampaign({ seed: "demo-1", scenario: colliding });
+  assert.ok(result.ok, result.ok ? "" : JSON.stringify(result.issues));
+  const { record, campaign: next } = accepted(endWeek(result.campaign, "w1", [research("co-a", "b-c"), research("co-a-b", "c")]));
+  assert.deepEqual((record.result as { delivered: string[] }).delivered, ["obs-b-c-week-1", "obs-c-week-1"]);
+  assert.deepEqual(
+    next.state.research.map((r) => [r.companyId, r.checkId]),
+    [
+      ["co-a", "b-c"],
+      ["co-a-b", "c"],
+    ],
+  );
 });

@@ -113,12 +113,12 @@ export type AppendResult =
   | { readonly ok: false; readonly issues: readonly ContentIssue[] };
 
 /**
- * Observation ids are derived from authored ids plus a suffix, so they may be longer
- * than authored ids. The longest: research (src/campaign/research.ts) is "obs-" + a
- * 64-character company id + "-" + a 64-character check id + "-week-" + up to 3 digits,
- * 142 characters; an application figure (src/knowledge/inbound.ts) is at most 107.
+ * Observation ids are derived from authored ids plus a suffix (src/knowledge/inbound.ts:
+ * "obs-" + a 64-character company id + "-application-largest-customer-share-bps" is 107;
+ * research, src/campaign/research.ts, is at most 77), so they may be longer than
+ * authored ids.
  */
-export const OBSERVATION_ID_MAX_LENGTH = 160;
+export const OBSERVATION_ID_MAX_LENGTH = 128;
 
 /** Earliest week a period may start: ten years before the campaign. */
 const EARLIEST_WEEK = -520;
