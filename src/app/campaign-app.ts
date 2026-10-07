@@ -13,6 +13,7 @@ import {
   type ManifestIssue,
 } from "../manifest/campaign-manifest.ts";
 import { canonicalHash } from "../manifest/canonical-json.ts";
+import type { CommandRecord } from "./commands.ts";
 import { buildPlayerView, searchPlayerView, type PlayerCompany, type PlayerView } from "../knowledge/player-view.ts";
 
 // Adapters import only from src/app/, so the helpers they need are re-exported here.
@@ -37,6 +38,14 @@ export type {
 } from "../knowledge/player-view.ts";
 export { compareObservations, type ObservationComparison, type VerificationStatus } from "../knowledge/verification.ts";
 export { METRICS, type Metric, type Period } from "../knowledge/observation.ts";
+export {
+  submitCommand,
+  type CommandEnvelope,
+  type CommandRecord,
+  type CommandRejection,
+  type RejectionCode,
+  type SubmitResult,
+} from "./commands.ts";
 
 export interface Campaign {
   readonly id: string;
@@ -46,6 +55,10 @@ export interface Campaign {
   readonly manifest: CampaignManifest;
   /** The validated scenario pack the manifest's content hash describes, hidden state included. */
   readonly scenario: ScenarioPack;
+  /** Accepted commands so far; 0 at initialization (§17.3). */
+  readonly revision: number;
+  /** Every accepted command in order, with its result and the state hash after it (§17.2). */
+  readonly journal: readonly CommandRecord[];
 }
 
 export interface InitializeCampaignInput {
@@ -81,6 +94,8 @@ export interface CampaignSummary {
   readonly portfolioSize: number;
   /** Companies the player knows of. Unknown companies are not counted (§9.1). */
   readonly knownCompanies: number;
+  /** Accepted commands so far; a command must name it as its expectedRevision. */
+  readonly revision: number;
   /** Hash of the current domain state; equals manifest.initialStateHash before any command. */
   readonly stateHash: string;
 }
@@ -107,6 +122,8 @@ export function initializeCampaign(input: InitializeCampaignInput): InitializeCa
       state: manifest.initialState,
       manifest,
       scenario: pack,
+      revision: 0,
+      journal: Object.freeze([]),
     }),
   };
 }
@@ -131,6 +148,7 @@ export function inspectCampaign(campaign: Campaign): CampaignSummary {
     checkSizeCents: config.checkSizeCents,
     portfolioSize: state.portfolio.length,
     knownCompanies: state.companies.filter((c) => c.knowledge !== "unknown").length,
+    revision: campaign.revision,
     stateHash: canonicalHash(state),
   });
 }
