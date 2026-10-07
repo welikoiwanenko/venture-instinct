@@ -189,6 +189,36 @@ test("an envelope with a getter is rejected without calling it", () => {
   assert.equal(calls, 0);
 });
 
+test("an envelope with another prototype is rejected without calling its inherited getters", () => {
+  let calls = 0;
+  const envelope = Object.create({
+    get commandId() {
+      calls += 1;
+      throw new Error("getter executed");
+    },
+  }) as Record<string, unknown>;
+  Object.assign(envelope, { expectedRevision: 0, type: "add-note", args: { note: "hello" } });
+  const result = rejected(submit(campaign(), envelope));
+  assert.equal(result.rejection.code, "invalid-envelope");
+  assert.match(result.rejection.reasons[0] ?? "", /must be a plain object/);
+  assert.equal(calls, 0);
+  assert.equal(rejected(submit(campaign(), new Date())).rejection.code, "invalid-envelope");
+});
+
+test("an accepted state is frozen whole, even when the handler returned a mutable one", () => {
+  const handlers: CommandHandlers = {
+    "add-note": {
+      normalize: (args) => ({ ok: true, args }),
+      apply: (c) => ({ ok: true, state: { ...c.state, slots: { ...c.state.slots, remaining: 3 } }, result: null }),
+    },
+  };
+  const next = accepted(submitCommand(campaign(), note("c-1", 0), handlers)).campaign;
+  assert.ok(Object.isFrozen(next.state) && Object.isFrozen(next.state.slots));
+  assert.throws(() => {
+    (next.state.slots as { remaining: number }).remaining = 5;
+  }, TypeError);
+});
+
 test("read-only API calls never change the revision or the state hash", () => {
   const c = accepted(submit(campaign(), note("c-1", 0))).campaign;
   const before = canonicalJson({ state: c.state, revision: c.revision, journal: c.journal });
